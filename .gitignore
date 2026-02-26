@@ -7,3 +7,4 @@ database/portfolio.db-wal
 frontend/.vite/
 .DS_Store
 .vercel/
+.vercel
