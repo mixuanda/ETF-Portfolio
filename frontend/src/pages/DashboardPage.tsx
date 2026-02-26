@@ -47,7 +47,10 @@ export function DashboardPage(): JSX.Element {
 
   const activeRefreshMessage =
     refreshStatus === "idle"
-      ? "Cached prices loaded. Use Refresh Prices when you want delayed updates."
+      ? effectiveStatus === "failed"
+        ? portfolio?.summary.lastRefreshError ??
+          "Latest refresh failed. Showing previous cached snapshot data."
+        : "Cached prices loaded. Use Refresh Prices when you want delayed updates."
       : refreshMessage;
 
   const recentDividendCount = useMemo(() => portfolio?.recentDividends.length ?? 0, [portfolio]);
@@ -71,6 +74,7 @@ export function DashboardPage(): JSX.Element {
         status={effectiveStatus}
         message={activeRefreshMessage}
         lastRefreshAt={portfolio.summary.lastRefreshAt}
+        lastRefreshProvider={portfolio.summary.lastRefreshProvider}
         onRefresh={triggerRefresh}
         disabled={isRefreshing}
       />

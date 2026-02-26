@@ -1,8 +1,9 @@
-import app from "./app.js";
 import { config } from "./config.js";
 import { initializeDatabase } from "./db/bootstrap.js";
 
-initializeDatabase({ seedIfEmpty: true });
+initializeDatabase();
+
+const { default: app } = await import("./app.js");
 
 app.listen(config.port, () => {
   console.log(`Backend API running at http://localhost:${config.port}`);

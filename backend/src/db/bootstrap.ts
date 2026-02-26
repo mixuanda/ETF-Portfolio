@@ -15,18 +15,13 @@ function runSqlFile(filePath: string): void {
   db.exec(sql);
 }
 
-function isHoldingTableEmpty(): boolean {
-  const row = db.prepare("SELECT COUNT(*) AS count FROM holdings").get() as { count: number };
-  return row.count === 0;
-}
-
-export function initializeDatabase(options?: { seedIfEmpty?: boolean; forceSeed?: boolean }): {
+export function initializeDatabase(options?: { seed?: boolean }): {
   seeded: boolean;
 } {
   runSqlFile(schemaPath);
 
   let seeded = false;
-  const shouldSeed = Boolean(options?.forceSeed || (options?.seedIfEmpty && isHoldingTableEmpty()));
+  const shouldSeed = Boolean(options?.seed);
 
   if (shouldSeed) {
     runSqlFile(seedPath);

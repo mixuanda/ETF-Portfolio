@@ -58,6 +58,11 @@ export function SettingsPage(): JSX.Element {
       return;
     }
 
+    if (!data?.settings.enableDemoMode && form.quoteProvider === "demo") {
+      setError("Demo mode is disabled by environment. Set ENABLE_DEMO_MODE=true to use demo quotes.");
+      return;
+    }
+
     const refreshTimeoutMs = Number(form.refreshTimeoutMs);
     const refreshRetries = Number(form.refreshRetries);
 
@@ -113,6 +118,13 @@ export function SettingsPage(): JSX.Element {
           Last status: <strong>{data.settings.lastRefreshStatus}</strong> | Last refresh time: {" "}
           {formatDateTime(data.settings.lastRefreshAt)}
         </p>
+        <p className="muted">
+          Last successful source: {data.settings.lastRefreshProvider ?? "No successful refresh yet"}
+        </p>
+        <p className="muted">
+          Demo mode: <strong>{data.settings.enableDemoMode ? "enabled" : "disabled"}</strong> | Demo
+          fallback: <strong>{data.settings.allowDemoFallback ? "enabled" : "disabled"}</strong>
+        </p>
         {data.settings.lastRefreshError ? (
           <p className="muted">Latest refresh message: {data.settings.lastRefreshError}</p>
         ) : null}
@@ -134,8 +146,10 @@ export function SettingsPage(): JSX.Element {
                   )
                 }
               >
-                <option value="yahoo">Yahoo (with demo fallback)</option>
-                <option value="demo">Demo deterministic quotes</option>
+                <option value="yahoo">Yahoo delayed quotes (normal mode)</option>
+                <option value="demo" disabled={!data.settings.enableDemoMode}>
+                  Demo deterministic quotes (explicit demo mode only)
+                </option>
               </select>
             </label>
             <label>
@@ -218,6 +232,9 @@ export function SettingsPage(): JSX.Element {
         <p className="muted">
           To add a new provider, implement the QuoteProvider interface and register it in
           backend/src/services/quotes/createQuoteService.ts.
+        </p>
+        <p className="muted">
+          In normal mode, demo fallback is disabled by default and Yahoo failures keep existing cached data.
         </p>
       </section>
     </section>

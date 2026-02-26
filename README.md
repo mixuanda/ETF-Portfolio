@@ -4,53 +4,30 @@ This project is a personal-use portfolio dashboard for Hong Kong ETFs and a
 small set of manually tracked products. It is a read-only market data app with
 manual refresh. It is not a trading platform.
 
-The MVP focuses on robust core calculations, clear portfolio visibility, and a
-replaceable delayed quote provider layer.
-
 ## What this app does
 
-The app gives you a local-first dashboard with SQLite storage and a manual
-refresh workflow.
+The app stores your data locally in SQLite and refreshes delayed quotes only
+when you click **Refresh Prices**.
 
-- Tracks Hong Kong ETF holdings with delayed price snapshots.
-- Tracks manual products (for example flexible investment plans or funds) with
-  manual price or NAV entry.
-- Stores dividend records and includes dividends in total return.
-- Computes market value, unrealized P/L, unrealized return, and allocation
-  summaries.
-- Displays dashboard, holdings, dividends, analysis, and settings pages.
+- Tracks HK ETF holdings and manual products.
+- Stores delayed quote snapshots in `asset_snapshots`.
+- Tracks dividend history and includes dividends in total return.
+- Shows dashboard, holdings, dividends, analysis, and settings pages.
+- Exposes quote source and refresh status in the UI.
 
-## Non-goals
+## Real mode vs demo mode
 
-The MVP intentionally excludes brokerage and trading features.
+The app has two explicit modes. Normal use is real mode.
 
-- No HSBC or broker login.
-- No order placement or execution.
-- No real-time streaming or tick-level data.
-- No paid API dependency for the first version.
+- **Real mode (default):** Yahoo delayed quotes only.
+- **Demo mode (opt-in):** demo provider can be selected for testing.
 
-## Stack
+Important safety behavior:
 
-This project uses a lightweight TypeScript stack.
-
-- Frontend: React + Vite + TypeScript
-- Backend: Node.js + Express + TypeScript
-- Database: SQLite (`better-sqlite3`)
-- Shared package: common types and calculation utilities
-
-## Project structure
-
-The repository is organized into clear folders by responsibility.
-
-```text
-.
-├── backend/          # Express API, refresh logic, validation, SQLite access
-├── frontend/         # React dashboard UI
-├── shared/           # Shared TypeScript types + calculation helpers
-├── database/         # SQLite schema and seed SQL
-├── .env.example      # Environment variables template
-└── README.md
-```
+- Demo prices are never used silently in real mode.
+- Demo fallback is disabled by default.
+- If quote refresh fails, cached snapshots are preserved.
+- Failed symbols are reported; missing symbols are never fabricated.
 
 ## Quick start
 
@@ -62,13 +39,13 @@ Follow these steps to run locally.
    npm install
    ```
 
-2. Initialize the SQLite database and seed demo data.
+2. Initialize schema only (no demo portfolio data).
 
    ```bash
    npm run db:init
    ```
 
-3. Start backend + frontend in dev mode.
+3. Start backend and frontend in dev mode.
 
    ```bash
    npm run dev
@@ -76,46 +53,59 @@ Follow these steps to run locally.
 
 4. Open `http://localhost:5173`.
 
-The backend runs on `http://localhost:4000`.
+Backend runs on `http://localhost:4000`.
 
 ## Scripts
 
 Use these scripts from the repository root.
 
-- `npm run dev`: build shared package, then run shared watcher + backend +
+- `npm run dev`: build shared package, then run shared watcher, backend, and
   frontend.
-- `npm run build`: build shared, backend, and frontend for production.
-- `npm run db:init`: create schema and seed data if holdings table is empty.
-- `npm run db:seed`: force seed script execution.
+- `npm run build`: build shared, backend, and frontend.
+- `npm run db:init`: initialize schema only.
+- `npm run db:seed`: apply demo seed data intentionally.
 
 ## Environment variables
 
-Copy `.env.example` to `.env` if you want to override defaults.
+Copy `.env.example` to `.env` and adjust as needed.
 
 | Variable | Default | Description |
 | --- | --- | --- |
 | `PORT` | `4000` | Backend API port |
 | `FRONTEND_ORIGIN` | `http://localhost:5173` | CORS origin for frontend |
 | `DB_PATH` | `database/portfolio.db` | SQLite file path override |
-| `DEFAULT_QUOTE_PROVIDER` | `yahoo` | Startup quote provider |
+| `DEFAULT_QUOTE_PROVIDER` | `yahoo` | Default provider (`yahoo` or `demo`) |
+| `ENABLE_DEMO_MODE` | `false` | Enables explicit demo/testing mode |
+| `ALLOW_DEMO_FALLBACK` | `false` | Allows Yahoo to fall back to demo only when demo mode is enabled |
 
-## Manual refresh flow
+## Manual refresh behavior
 
-The refresh pipeline is designed for personal manual updates, not streaming.
+The refresh flow is manual and cache-preserving.
 
 1. You open the site.
-2. The frontend loads cached prices from SQLite snapshots.
-3. You click **Refresh Prices** on Dashboard or Holdings.
-4. The backend fetches delayed quotes through the quote service layer.
-5. The backend stores new snapshot rows in `asset_snapshots`.
-6. The frontend reloads computed portfolio values and allocations.
+2. The frontend shows cached snapshot data.
+3. You click **Refresh Prices**.
+4. Backend fetches delayed quotes from provider.
+5. On success, new real quotes are persisted.
+6. On failure, existing cached snapshots remain unchanged.
 
-Refresh status is surfaced as `idle`, `refreshing`, `success`, or `failed`, with
-the latest refresh timestamp shown in the UI.
+Refresh status is shown as `idle`, `refreshing`, `success`, or `failed`.
+Dashboard and holdings pages display:
 
-## Seed/demo data
+- Last updated timestamp.
+- Last successful source/provider.
+- Cached-data state.
+- Failure warning when refresh does not complete.
 
-`database/seed.sql` includes demo holdings for these ETF-style symbols:
+## Seeding behavior
+
+Demo seed data exists for testing but is never loaded automatically in normal
+startup.
+
+- `npm run db:init` does not seed holdings or quote snapshots.
+- `npm run db:seed` intentionally loads demo holdings, snapshots, and dividends.
+
+Demo seed includes sample HK ETF symbols:
 
 - `03010`
 - `03153`
@@ -124,21 +114,38 @@ the latest refresh timestamp shown in the UI.
 - `03450`
 - `03466`
 
-It also includes sample dividends, manual assets, and initial settings.
+## Quote provider architecture
+
+Quote fetching is abstracted behind a service layer.
+
+- Interface: `backend/src/services/quotes/QuoteProvider.ts`
+- Coordinator: `backend/src/services/quotes/QuoteService.ts`
+- Provider selector: `backend/src/services/quotes/createQuoteService.ts`
+- Yahoo implementation: `backend/src/services/quotes/providers/YahooQuoteProvider.ts`
+- Demo implementation: `backend/src/services/quotes/providers/DemoQuoteProvider.ts`
+
+To add another provider, implement `QuoteProvider` and register it in
+`createQuoteService.ts`.
+
+## Yahoo provider note
+
+Yahoo is used as an unofficial delayed quote source. It can occasionally fail,
+timeout, or rate-limit. When this happens, the app keeps the last cached data
+and surfaces a warning instead of writing fabricated prices.
 
 ## SQLite schema
 
-`database/schema.sql` defines these tables:
+`database/schema.sql` defines:
 
-- `holdings`: ETF and listed positions entered manually.
-- `manual_assets`: manually tracked products with manual price/NAV.
-- `asset_snapshots`: cached delayed quote snapshots.
-- `dividends`: dividend history records.
-- `settings`: refresh/provider/tag settings and refresh status metadata.
+- `holdings`
+- `manual_assets`
+- `asset_snapshots`
+- `dividends`
+- `settings`
 
 ## API endpoints
 
-Core MVP endpoints:
+Core endpoints:
 
 - `GET /api/portfolio`
 - `GET /api/holdings`
@@ -148,7 +155,7 @@ Core MVP endpoints:
 - `PATCH /api/holdings/:id`
 - `DELETE /api/holdings/:id`
 
-Additional endpoints used by the UI:
+Additional UI endpoints:
 
 - `GET /api/manual-assets`
 - `POST /api/manual-assets`
@@ -159,51 +166,3 @@ Additional endpoints used by the UI:
 - `DELETE /api/dividends/:id`
 - `GET /api/settings`
 - `PATCH /api/settings`
-
-## Data entry and editing
-
-The UI supports manual data management for personal records.
-
-- Holdings page:
-  - Add/edit/delete ETF holdings.
-  - Add/edit/delete manual products.
-  - Manage quantity, average cost, tags, strategy, region, and notes.
-- Dividends page:
-  - Add/edit/delete dividend records.
-  - Track ex-dividend date, payment date, dividend per unit, and received
-    amount.
-
-All key portfolio calculations are generated server-side (with shared utility
-functions) to keep results consistent across pages.
-
-## Quote provider architecture
-
-Quote fetching is abstracted behind a service layer.
-
-- Interface: `backend/src/services/quotes/QuoteProvider.ts`
-- Coordinator: `backend/src/services/quotes/QuoteService.ts`
-- Provider registry: `backend/src/services/quotes/createQuoteService.ts`
-- Initial provider: Yahoo delayed quote fetch (`YahooQuoteProvider`)
-- Built-in fallback for local resilience: deterministic demo provider
-
-To swap providers later, implement `QuoteProvider` and wire it in
-`createQuoteService.ts`.
-
-## Limitations
-
-The MVP is intentionally simple and personal-use focused.
-
-- Quote data is delayed and may not reflect tradable live prices.
-- Single local SQLite database, no user auth or multi-account support.
-- Manual FX handling is not included.
-- Uses approximate daily change when source fields are available.
-
-## Optional future upgrades
-
-After MVP, these upgrades are natural next steps.
-
-1. Add provider fallback chains with provider health metrics.
-2. Add CSV import/export for holdings and dividend history.
-3. Add historical charting for portfolio value and dividend yield trends.
-4. Add optional local authentication for multi-profile usage.
-5. Add per-asset target allocation and drift alerts.

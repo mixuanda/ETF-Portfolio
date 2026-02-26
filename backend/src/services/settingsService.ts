@@ -4,6 +4,7 @@ import type {
   SettingsResponse
 } from "@portfolio/shared";
 import db from "../db/client.js";
+import { config } from "../config.js";
 
 type SettingsKey =
   | "quote_provider"
@@ -13,17 +14,21 @@ type SettingsKey =
   | "base_currency"
   | "last_refresh_status"
   | "last_refresh_at"
-  | "last_refresh_error";
+  | "last_refresh_error"
+  | "last_refresh_provider";
 
 const DEFAULT_SETTINGS: SettingsResponse = {
-  quoteProvider: "yahoo",
+  quoteProvider: config.defaultQuoteProvider,
   refreshTimeoutMs: 6000,
   refreshRetries: 1,
   customTags: ["equity", "bond", "money market", "dividend", "defensive"],
   baseCurrency: "HKD",
   lastRefreshStatus: "idle",
   lastRefreshAt: null,
-  lastRefreshError: null
+  lastRefreshProvider: null,
+  lastRefreshError: null,
+  enableDemoMode: config.enableDemoMode,
+  allowDemoFallback: config.enableDemoMode && config.allowDemoFallback
 };
 
 function getRawSettingsMap(): Record<string, string> {
@@ -36,6 +41,21 @@ function getRawSettingsMap(): Record<string, string> {
     acc[row.key] = row.value;
     return acc;
   }, {});
+}
+
+function inferLatestSnapshotProvider(): string | null {
+  const row = db
+    .prepare(
+      `
+        SELECT provider
+        FROM asset_snapshots
+        ORDER BY fetched_at DESC, id DESC
+        LIMIT 1
+      `
+    )
+    .get() as { provider: string } | undefined;
+
+  return row?.provider ?? null;
 }
 
 function parseNumber(value: string | undefined, fallback: number): number {
@@ -55,6 +75,14 @@ function parseRefreshStatus(value: string | undefined): RefreshStatus {
 
 function parseQuoteProvider(value: string | undefined): QuoteProviderName {
   return value === "demo" ? "demo" : "yahoo";
+}
+
+function resolveQuoteProvider(value: string | undefined): QuoteProviderName {
+  const preferred = parseQuoteProvider(value ?? config.defaultQuoteProvider);
+  if (preferred === "demo" && !config.enableDemoMode) {
+    return "yahoo";
+  }
+  return preferred;
 }
 
 function parseTags(value: string | undefined): string[] {
@@ -85,17 +113,22 @@ export function getSettings(): SettingsResponse {
   const raw = getRawSettingsMap();
 
   const lastRefreshAt = raw.last_refresh_at?.trim() ? raw.last_refresh_at : null;
+  const explicitProvider = raw.last_refresh_provider?.trim() ? raw.last_refresh_provider : null;
+  const lastRefreshProvider = explicitProvider ?? inferLatestSnapshotProvider();
   const lastRefreshError = raw.last_refresh_error?.trim() ? raw.last_refresh_error : null;
 
   return {
-    quoteProvider: parseQuoteProvider(raw.quote_provider),
+    quoteProvider: resolveQuoteProvider(raw.quote_provider),
     refreshTimeoutMs: parseNumber(raw.refresh_timeout_ms, DEFAULT_SETTINGS.refreshTimeoutMs),
     refreshRetries: parseNumber(raw.refresh_retries, DEFAULT_SETTINGS.refreshRetries),
     customTags: parseTags(raw.custom_tags),
     baseCurrency: raw.base_currency ?? DEFAULT_SETTINGS.baseCurrency,
     lastRefreshStatus: parseRefreshStatus(raw.last_refresh_status),
     lastRefreshAt,
-    lastRefreshError
+    lastRefreshProvider,
+    lastRefreshError,
+    enableDemoMode: config.enableDemoMode,
+    allowDemoFallback: config.enableDemoMode && config.allowDemoFallback
   };
 }
 
@@ -106,6 +139,10 @@ export function updateSettings(input: {
   customTags?: string[];
   baseCurrency?: string;
 }): SettingsResponse {
+  if (input.quoteProvider === "demo" && !config.enableDemoMode) {
+    throw new Error("Demo mode is disabled. Set ENABLE_DEMO_MODE=true to use DemoQuoteProvider.");
+  }
+
   const writes: Array<{ key: SettingsKey; value: string }> = [];
 
   if (input.quoteProvider) {
@@ -137,6 +174,7 @@ export function updateSettings(input: {
 export function setRefreshState(input: {
   status: RefreshStatus;
   refreshedAt?: string | null;
+  provider?: string | null;
   error?: string | null;
 }): void {
   const writes: Array<{ key: SettingsKey; value: string }> = [
@@ -148,6 +186,9 @@ export function setRefreshState(input: {
   }
   if (input.error !== undefined) {
     writes.push({ key: "last_refresh_error", value: input.error ?? "" });
+  }
+  if (input.provider !== undefined) {
+    writes.push({ key: "last_refresh_provider", value: input.provider ?? "" });
   }
 
   const transaction = db.transaction((entries: Array<{ key: SettingsKey; value: string }>) => {

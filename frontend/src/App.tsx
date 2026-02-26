@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react";
 import { NavLink, Route, Routes } from "react-router-dom";
+import { api } from "./api/client";
 import { AnalysisPage } from "./pages/AnalysisPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DividendsPage } from "./pages/DividendsPage";
@@ -31,9 +33,38 @@ function Navigation(): JSX.Element {
 }
 
 export default function App(): JSX.Element {
+  const [demoModeEnabled, setDemoModeEnabled] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    void (async () => {
+      try {
+        const response = await api.getSettings();
+        if (active) {
+          setDemoModeEnabled(response.settings.enableDemoMode);
+        }
+      } catch {
+        if (active) {
+          setDemoModeEnabled(false);
+        }
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <div className="app-shell">
       <header className="app-header">
+        {demoModeEnabled ? (
+          <div className="global-warning-banner">
+            <strong>DEMO DATA</strong>
+            <span>NOT REAL MARKET DATA</span>
+          </div>
+        ) : null}
         <div>
           <p className="eyebrow">Personal Use Portfolio Dashboard</p>
           <h1>Hong Kong ETF Portfolio</h1>

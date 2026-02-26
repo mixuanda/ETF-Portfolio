@@ -112,7 +112,9 @@ export function HoldingsPage(): JSX.Element {
 
   const displayedRefreshMessage =
     refreshStatus === "idle"
-      ? "Holdings loaded from cached snapshot. Click Refresh Prices for delayed quote updates."
+      ? effectiveStatus === "failed"
+        ? data?.lastRefreshError ?? "Latest refresh failed. Showing previous cached snapshot data."
+        : "Holdings loaded from cached snapshot. Click Refresh Prices for delayed quote updates."
       : refreshMessage;
 
   const totals = useMemo(() => {
@@ -277,6 +279,7 @@ export function HoldingsPage(): JSX.Element {
         status={effectiveStatus}
         message={displayedRefreshMessage}
         lastRefreshAt={data.lastRefreshAt}
+        lastRefreshProvider={data.lastRefreshProvider}
         onRefresh={triggerRefresh}
         disabled={isRefreshing}
       />
@@ -356,6 +359,9 @@ export function HoldingsPage(): JSX.Element {
             </tbody>
           </table>
         </div>
+        {data.holdings.length === 0 ? (
+          <p className="muted">No ETF holdings yet. Add your first symbol below.</p>
+        ) : null}
 
         <form className="data-form" onSubmit={(event) => void handleHoldingSubmit(event)}>
           <h4>{editingHoldingId ? "Edit holding" : "Add holding"}</h4>
@@ -562,6 +568,9 @@ export function HoldingsPage(): JSX.Element {
             </tbody>
           </table>
         </div>
+        {data.manualAssets.length === 0 ? (
+          <p className="muted">No manual products yet. Add one below if needed.</p>
+        ) : null}
 
         <form className="data-form" onSubmit={(event) => void handleManualSubmit(event)}>
           <h4>{editingManualId ? "Edit manual product" : "Add manual product"}</h4>

@@ -251,7 +251,9 @@ export function listHoldings(): HoldingsResponse {
     holdings: listHoldingsWithMetrics(),
     manualAssets: listManualAssetsWithMetrics(),
     refreshStatus: settings.lastRefreshStatus,
-    lastRefreshAt: settings.lastRefreshAt
+    lastRefreshAt: settings.lastRefreshAt,
+    lastRefreshProvider: settings.lastRefreshProvider,
+    lastRefreshError: settings.lastRefreshError
   };
 }
 
@@ -344,7 +346,9 @@ function buildPortfolioSummary(
   manualAssets: ManualAssetWithMetrics[],
   dividends: DividendsResponse,
   refreshStatus: RefreshStatus,
-  lastRefreshAt: string | null
+  lastRefreshAt: string | null,
+  lastRefreshProvider: string | null,
+  lastRefreshError: string | null
 ): PortfolioSummary {
   const allPositions = [...holdings, ...manualAssets];
   const totalMarketValue = allPositions.reduce((acc, position) => acc + position.marketValue, 0);
@@ -369,6 +373,8 @@ function buildPortfolioSummary(
     holdingsCount: holdings.length,
     manualAssetsCount: manualAssets.length,
     lastRefreshAt,
+    lastRefreshProvider,
+    lastRefreshError,
     lastRefreshStatus: refreshStatus
   };
 }
@@ -400,7 +406,9 @@ export function getPortfolioSnapshot(): PortfolioResponse {
     manualAssets,
     dividends,
     settings.lastRefreshStatus,
-    settings.lastRefreshAt
+    settings.lastRefreshAt,
+    settings.lastRefreshProvider,
+    settings.lastRefreshError
   );
 
   const totalValue = summary.totalMarketValue;

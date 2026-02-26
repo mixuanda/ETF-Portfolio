@@ -96,6 +96,8 @@ export interface PortfolioSummary {
   holdingsCount: number;
   manualAssetsCount: number;
   lastRefreshAt: string | null;
+  lastRefreshProvider: string | null;
+  lastRefreshError: string | null;
   lastRefreshStatus: RefreshStatus;
 }
 
@@ -115,6 +117,8 @@ export interface HoldingsResponse {
   manualAssets: ManualAssetWithMetrics[];
   refreshStatus: RefreshStatus;
   lastRefreshAt: string | null;
+  lastRefreshProvider: string | null;
+  lastRefreshError: string | null;
 }
 
 export interface DividendSummary {
@@ -138,7 +142,10 @@ export interface SettingsResponse {
   baseCurrency: string;
   lastRefreshStatus: RefreshStatus;
   lastRefreshAt: string | null;
+  lastRefreshProvider: string | null;
   lastRefreshError: string | null;
+  enableDemoMode: boolean;
+  allowDemoFallback: boolean;
 }
 
 export interface QuoteData {

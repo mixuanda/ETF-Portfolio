@@ -180,6 +180,7 @@ INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES
   ('refresh_retries', '1', CURRENT_TIMESTAMP),
   ('last_refresh_status', 'success', CURRENT_TIMESTAMP),
   ('last_refresh_at', datetime('now', '-1 day'), CURRENT_TIMESTAMP),
+  ('last_refresh_provider', 'seed', CURRENT_TIMESTAMP),
   ('last_refresh_error', '', CURRENT_TIMESTAMP),
   ('base_currency', 'HKD', CURRENT_TIMESTAMP),
   ('custom_tags', '["equity","bond","money market","dividend","defensive"]', CURRENT_TIMESTAMP);

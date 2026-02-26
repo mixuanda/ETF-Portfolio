@@ -1,5 +1,6 @@
 import { Router } from "express";
 import type { RefreshResponse } from "@portfolio/shared";
+import { config } from "../config.js";
 import { listTrackedSymbols, saveQuoteSnapshots } from "../services/portfolioService.js";
 import { getSettings, setRefreshState } from "../services/settingsService.js";
 import { createQuoteService } from "../services/quotes/createQuoteService.js";
@@ -8,20 +9,22 @@ const router = Router();
 
 router.post("/refresh", async (_req, res, next) => {
   try {
+    const previousSettings = getSettings();
     setRefreshState({ status: "refreshing", error: null });
 
     const symbols = listTrackedSymbols();
     if (symbols.length === 0) {
-      const refreshedAt = new Date().toISOString();
-      setRefreshState({ status: "success", refreshedAt, error: null });
+      const message =
+        "No symbols configured. Add holdings first. Existing cached data was preserved.";
+      setRefreshState({ status: "failed", error: message });
 
       const response: RefreshResponse = {
-        status: "success",
-        refreshedAt,
+        status: "failed",
+        refreshedAt: previousSettings.lastRefreshAt,
         updatedSymbols: [],
         failedSymbols: [],
-        message: "No symbols configured. Add holdings to refresh prices.",
-        provider: "n/a"
+        message,
+        provider: previousSettings.lastRefreshProvider ?? "n/a"
       };
 
       res.json(response);
@@ -32,37 +35,63 @@ router.post("/refresh", async (_req, res, next) => {
     const quoteService = createQuoteService({
       provider: settings.quoteProvider,
       timeoutMs: settings.refreshTimeoutMs,
-      retries: settings.refreshRetries
+      retries: settings.refreshRetries,
+      enableDemoMode: config.enableDemoMode,
+      allowDemoFallback: config.allowDemoFallback
     });
 
     const result = await quoteService.fetchQuotes(symbols);
-    const refreshedAt = new Date().toISOString();
-
-    if (result.quotes.length > 0) {
-      saveQuoteSnapshots(result.quotes, refreshedAt);
-    }
 
     const failedSymbols = result.errors.map((entry) => ({
       symbol: entry.symbol,
       message: entry.message
     }));
 
-    const status = result.quotes.length > 0 ? "success" : "failed";
+    if (result.quotes.length === 0) {
+      const fallbackMessage =
+        failedSymbols.length > 0
+          ? failedSymbols[0]?.message ?? "No quotes returned."
+          : "No quotes returned.";
+      const message = `Quote refresh failed. Showing previous cached data. ${fallbackMessage}`;
+
+      setRefreshState({
+        status: "failed",
+        error: message
+      });
+
+      const response: RefreshResponse = {
+        status: "failed",
+        refreshedAt: previousSettings.lastRefreshAt,
+        updatedSymbols: [],
+        failedSymbols,
+        message,
+        provider: previousSettings.lastRefreshProvider ?? result.provider
+      };
+
+      res.json(response);
+      return;
+    }
+
+    const refreshedAt = new Date().toISOString();
+    saveQuoteSnapshots(result.quotes, refreshedAt);
+    const usesDemoData = result.provider.toLowerCase().includes("demo");
+
     const message =
-      status === "success"
-        ? failedSymbols.length > 0
-          ? `Updated ${result.quotes.length} symbol(s). ${failedSymbols.length} symbol(s) failed.`
-          : `Updated ${result.quotes.length} symbol(s).`
-        : "Unable to refresh quotes. Please try again in a moment.";
+      failedSymbols.length > 0
+        ? `Updated ${result.quotes.length} symbol(s). ${failedSymbols.length} symbol(s) failed. Cached prices were kept for failed symbols.`
+        : usesDemoData
+          ? `Updated ${result.quotes.length} symbol(s) using demo quote data (${result.provider}).`
+          : `Updated ${result.quotes.length} symbol(s) from delayed market quotes.`;
 
     setRefreshState({
-      status,
+      status: "success",
       refreshedAt,
-      error: status === "failed" ? message : failedSymbols.length > 0 ? message : null
+      provider: result.provider,
+      error: failedSymbols.length > 0 ? message : null
     });
 
     const response: RefreshResponse = {
-      status,
+      status: "success",
       refreshedAt,
       updatedSymbols: result.quotes.map((quote) => quote.symbol),
       failedSymbols,
@@ -74,7 +103,6 @@ router.post("/refresh", async (_req, res, next) => {
   } catch (error) {
     setRefreshState({
       status: "failed",
-      refreshedAt: new Date().toISOString(),
       error: error instanceof Error ? error.message : "Unexpected quote refresh error"
     });
     next(error);

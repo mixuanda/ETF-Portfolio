@@ -22,6 +22,10 @@ type YahooQuotePayload = {
   };
 };
 
+const YAHOO_QUOTE_ENDPOINT = "https://query1.finance.yahoo.com/v7/finance/quote";
+const REQUEST_USER_AGENT =
+  "ETF-Portfolio/1.0 (+https://github.com/mixuanda/ETF-Portfolio; personal-use delayed quotes)";
+
 export class YahooQuoteProvider implements QuoteProvider {
   readonly name = "yahoo";
 
@@ -47,23 +51,42 @@ export class YahooQuoteProvider implements QuoteProvider {
     let payload: YahooQuotePayload;
     try {
       const query = normalizedPairs.map((pair) => pair.normalized).join(",");
-      const response = await fetch(
-        `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(query)}`,
-        { signal: controller.signal }
-      );
+      const response = await fetch(`${YAHOO_QUOTE_ENDPOINT}?symbols=${encodeURIComponent(query)}`, {
+        signal: controller.signal,
+        headers: {
+          Accept: "application/json",
+          "User-Agent": REQUEST_USER_AGENT
+        }
+      });
 
       if (!response.ok) {
-        throw new Error(`Yahoo Finance request failed with HTTP ${response.status}`);
+        const message = `Yahoo Finance request failed with HTTP ${response.status}`;
+        console.error(`[YahooQuoteProvider] ${message}`);
+        throw new Error(message);
       }
 
       payload = (await response.json()) as YahooQuotePayload;
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
-        throw new Error(`Yahoo quote request timed out after ${this.timeoutMs}ms`);
+        const message = `Yahoo quote request timed out after ${this.timeoutMs}ms`;
+        console.error(`[YahooQuoteProvider] ${message}`);
+        throw new Error(message);
       }
-      throw error;
+
+      const message =
+        error instanceof Error
+          ? `Yahoo quote request failed: ${error.message}`
+          : "Yahoo quote request failed unexpectedly";
+      console.error(`[YahooQuoteProvider] ${message}`);
+      throw new Error(message);
     } finally {
       clearTimeout(timeout);
+    }
+
+    if (!payload.quoteResponse || !Array.isArray(payload.quoteResponse.result)) {
+      const message = "Yahoo Finance returned an invalid quote payload.";
+      console.error(`[YahooQuoteProvider] ${message}`);
+      throw new Error(message);
     }
 
     const results = payload.quoteResponse?.result ?? [];

@@ -23,6 +23,10 @@ router.patch("/settings", (req, res) => {
       res.status(400).json({ message: toValidationMessage(error) });
       return;
     }
+    if (error instanceof Error) {
+      res.status(400).json({ message: error.message });
+      return;
+    }
     throw error;
   }
 });
