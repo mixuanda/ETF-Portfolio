@@ -23,6 +23,7 @@ router.post("/refresh", async (_req, res, next) => {
         refreshedAt: previousSettings.lastRefreshAt,
         updatedSymbols: [],
         failedSymbols: [],
+        symbolProviders: [],
         message,
         provider: previousSettings.lastRefreshProvider ?? "n/a"
       };
@@ -36,6 +37,7 @@ router.post("/refresh", async (_req, res, next) => {
       provider: settings.quoteProvider,
       timeoutMs: settings.refreshTimeoutMs,
       retries: settings.refreshRetries,
+      enableHkexBackup: config.enableHkexBackup,
       enableDemoMode: config.enableDemoMode,
       allowDemoFallback: config.allowDemoFallback
     });
@@ -64,6 +66,7 @@ router.post("/refresh", async (_req, res, next) => {
         refreshedAt: previousSettings.lastRefreshAt,
         updatedSymbols: [],
         failedSymbols,
+        symbolProviders: [],
         message,
         provider: previousSettings.lastRefreshProvider ?? result.provider
       };
@@ -75,26 +78,34 @@ router.post("/refresh", async (_req, res, next) => {
     const refreshedAt = new Date().toISOString();
     saveQuoteSnapshots(result.quotes, refreshedAt);
     const usesDemoData = result.provider.toLowerCase().includes("demo");
+    const isPartial = failedSymbols.length > 0;
+
+    const status = isPartial ? "partial_success" : "success";
 
     const message =
-      failedSymbols.length > 0
-        ? `Updated ${result.quotes.length} symbol(s). ${failedSymbols.length} symbol(s) failed. Cached prices were kept for failed symbols.`
+      isPartial
+        ? `Partial refresh succeeded. Updated ${result.quotes.length} symbol(s), ${failedSymbols.length} symbol(s) failed and still use older cached data.`
         : usesDemoData
           ? `Updated ${result.quotes.length} symbol(s) using demo quote data (${result.provider}).`
           : `Updated ${result.quotes.length} symbol(s) from delayed market quotes.`;
 
     setRefreshState({
-      status: "success",
+      status,
       refreshedAt,
       provider: result.provider,
-      error: failedSymbols.length > 0 ? message : null
+      error: isPartial ? message : null
     });
 
     const response: RefreshResponse = {
-      status: "success",
+      status,
       refreshedAt,
       updatedSymbols: result.quotes.map((quote) => quote.symbol),
       failedSymbols,
+      symbolProviders: result.quotes.map((quote) => ({
+        symbol: quote.symbol,
+        provider: quote.provider,
+        quoteTime: quote.asOf
+      })),
       message,
       provider: result.provider
     };

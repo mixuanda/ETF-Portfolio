@@ -52,7 +52,8 @@ export class DemoQuoteProvider implements QuoteProvider {
         changePercent,
         currency: "HKD",
         asOf: new Date().toISOString(),
-        provider: this.name
+        provider: this.name,
+        status: "success"
       };
     });
 

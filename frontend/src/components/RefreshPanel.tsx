@@ -43,8 +43,16 @@ export function RefreshPanel({
         </div>
       ) : null}
 
+      {status === "partial_success" ? (
+        <div className="warning-banner warning-banner--failed">
+          Partial refresh succeeded. Some symbols still use older cached data.
+        </div>
+      ) : null}
+
       <p className="muted">Last updated: {formatDateTime(lastRefreshAt)}</p>
-      <p className="muted">Source: {lastRefreshProvider ?? "No successful refresh source yet"}</p>
+      <p className="muted">
+        Source (last successful quote): {lastRefreshProvider ?? "No successful refresh source yet"}
+      </p>
       <p className="muted">
         Displaying: {isUsingCachedData ? "Cached data snapshot" : "Cached data (refresh in progress)"}
       </p>

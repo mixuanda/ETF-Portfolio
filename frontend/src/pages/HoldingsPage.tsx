@@ -1,28 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { HoldingsResponse, RefreshStatus } from "@portfolio/shared";
+import type {
+  HoldingsResponse,
+  InstrumentSearchResult,
+  RefreshStatus,
+  TransactionType
+} from "@portfolio/shared";
 import { api } from "../api/client";
 import { RefreshPanel } from "../components/RefreshPanel";
 import { useRefreshPrices } from "../hooks/useRefreshPrices";
 import {
   formatCurrency,
+  formatDateTime,
   formatPercent,
   formatSignedCurrency,
   numberTone
 } from "../utils/format";
-
-interface HoldingFormState {
-  symbol: string;
-  name: string;
-  assetType: string;
-  quantity: string;
-  averageCost: string;
-  currency: string;
-  region: string;
-  strategyLabel: string;
-  riskGroup: string;
-  tags: string;
-  notes: string;
-}
 
 interface ManualAssetFormState {
   code: string;
@@ -39,19 +31,22 @@ interface ManualAssetFormState {
   notes: string;
 }
 
-const defaultHoldingForm: HoldingFormState = {
-  symbol: "",
-  name: "",
-  assetType: "equity etf",
-  quantity: "",
-  averageCost: "",
-  currency: "HKD",
-  region: "Hong Kong",
-  strategyLabel: "core",
-  riskGroup: "growth",
-  tags: "equity",
-  notes: ""
-};
+interface FirstBuyFormState {
+  quantity: string;
+  price: string;
+  tradeDate: string;
+  notes: string;
+}
+
+interface TransactionFormState {
+  symbol: string;
+  transactionType: TransactionType;
+  quantity: string;
+  price: string;
+  fee: string;
+  tradeDate: string;
+  notes: string;
+}
 
 const defaultManualAssetForm: ManualAssetFormState = {
   code: "",
@@ -68,6 +63,23 @@ const defaultManualAssetForm: ManualAssetFormState = {
   notes: ""
 };
 
+const defaultFirstBuyForm: FirstBuyFormState = {
+  quantity: "",
+  price: "",
+  tradeDate: "",
+  notes: ""
+};
+
+const defaultTransactionForm: TransactionFormState = {
+  symbol: "",
+  transactionType: "BUY",
+  quantity: "",
+  price: "",
+  fee: "0",
+  tradeDate: "",
+  notes: ""
+};
+
 function toTags(value: string): string[] {
   return value
     .split(",")
@@ -79,14 +91,29 @@ function toTagInput(tags: string[]): string {
   return tags.join(", ");
 }
 
+function instrumentDisplayName(item: InstrumentSearchResult): string {
+  return item.nameZh ? `${item.nameEn} / ${item.nameZh}` : item.nameEn;
+}
+
 export function HoldingsPage(): JSX.Element {
   const [data, setData] = useState<HoldingsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const [holdingForm, setHoldingForm] = useState<HoldingFormState>(defaultHoldingForm);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<InstrumentSearchResult[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [activeSearchIndex, setActiveSearchIndex] = useState(-1);
+  const [selectedInstrument, setSelectedInstrument] = useState<InstrumentSearchResult | null>(null);
+  const [purchaseDecision, setPurchaseDecision] = useState<"yes" | "no" | null>(null);
+  const [watchlistNote, setWatchlistNote] = useState("");
+  const [firstBuyForm, setFirstBuyForm] = useState<FirstBuyFormState>(defaultFirstBuyForm);
+  const [transactionForm, setTransactionForm] = useState<TransactionFormState>(defaultTransactionForm);
+
   const [manualForm, setManualForm] = useState<ManualAssetFormState>(defaultManualAssetForm);
-  const [editingHoldingId, setEditingHoldingId] = useState<number | null>(null);
   const [editingManualId, setEditingManualId] = useState<number | null>(null);
 
   const loadData = useCallback(async () => {
@@ -105,6 +132,45 @@ export function HoldingsPage(): JSX.Element {
     void loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (!query) {
+      setSearchResults([]);
+      setSearchOpen(false);
+      setActiveSearchIndex(-1);
+      return;
+    }
+
+    let active = true;
+    const timer = setTimeout(async () => {
+      setSearchLoading(true);
+      try {
+        const response = await api.searchInstruments(query);
+        if (!active) {
+          return;
+        }
+        setSearchResults(response.results);
+        setSearchOpen(true);
+        setActiveSearchIndex(response.results.length > 0 ? 0 : -1);
+      } catch {
+        if (!active) {
+          return;
+        }
+        setSearchResults([]);
+        setSearchOpen(false);
+      } finally {
+        if (active) {
+          setSearchLoading(false);
+        }
+      }
+    }, 180);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [searchQuery]);
+
   const { refreshStatus, refreshMessage, isRefreshing, triggerRefresh } = useRefreshPrices(loadData);
 
   const effectiveStatus: RefreshStatus =
@@ -112,7 +178,7 @@ export function HoldingsPage(): JSX.Element {
 
   const displayedRefreshMessage =
     refreshStatus === "idle"
-      ? effectiveStatus === "failed"
+      ? effectiveStatus === "failed" || effectiveStatus === "partial_success"
         ? data?.lastRefreshError ?? "Latest refresh failed. Showing previous cached snapshot data."
         : "Holdings loaded from cached snapshot. Click Refresh Prices for delayed quote updates."
       : refreshMessage;
@@ -132,56 +198,166 @@ export function HoldingsPage(): JSX.Element {
     };
   }, [data]);
 
-  async function handleHoldingSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
+  function clearSelection(): void {
+    setSelectedInstrument(null);
+    setPurchaseDecision(null);
+    setWatchlistNote("");
+    setFirstBuyForm(defaultFirstBuyForm);
+  }
+
+  function selectInstrument(item: InstrumentSearchResult): void {
+    setSelectedInstrument(item);
+    setPurchaseDecision(null);
+    setWatchlistNote("");
+    setFirstBuyForm(defaultFirstBuyForm);
+    setSearchOpen(false);
+    setActiveSearchIndex(-1);
     setFormError(null);
+    setSuccessMessage(null);
+  }
 
-    const quantity = Number(holdingForm.quantity);
-    const averageCost = Number(holdingForm.averageCost);
-
-    if (!holdingForm.symbol.trim() || !holdingForm.name.trim()) {
-      setFormError("Symbol and asset name are required.");
+  async function handleAddToWatchlist(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!selectedInstrument) {
       return;
     }
 
-    if (!Number.isFinite(quantity) || quantity < 0 || !Number.isFinite(averageCost) || averageCost < 0) {
-      setFormError("Quantity and average cost must be valid non-negative numbers.");
-      return;
-    }
-
-    const payload = {
-      symbol: holdingForm.symbol.trim().toUpperCase(),
-      name: holdingForm.name.trim(),
-      assetType: holdingForm.assetType.trim(),
-      quantity,
-      averageCost,
-      currency: holdingForm.currency.trim().toUpperCase(),
-      region: holdingForm.region.trim(),
-      strategyLabel: holdingForm.strategyLabel.trim(),
-      riskGroup: holdingForm.riskGroup.trim(),
-      tags: toTags(holdingForm.tags),
-      notes: holdingForm.notes.trim()
-    };
+    setFormError(null);
+    setSuccessMessage(null);
 
     try {
-      if (editingHoldingId) {
-        await api.updateHolding(editingHoldingId, payload);
-      } else {
-        await api.createHolding(payload);
-      }
-      setHoldingForm(defaultHoldingForm);
-      setEditingHoldingId(null);
+      await api.addToWatchlist({
+        symbol: selectedInstrument.symbol,
+        notes: watchlistNote.trim()
+      });
+      setSuccessMessage(`${selectedInstrument.symbol} is now tracked in watchlist.`);
+      clearSelection();
+      setSearchQuery("");
+      setSearchResults([]);
       await loadData();
     } catch (submitError) {
-      setFormError(submitError instanceof Error ? submitError.message : "Unable to save holding");
+      setFormError(submitError instanceof Error ? submitError.message : "Unable to add to watchlist");
+    }
+  }
+
+  async function handleFirstBuySubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!selectedInstrument) {
+      return;
+    }
+
+    setFormError(null);
+    setSuccessMessage(null);
+
+    const quantity = Number(firstBuyForm.quantity);
+    const price = Number(firstBuyForm.price);
+
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setFormError("Quantity must be greater than zero.");
+      return;
+    }
+    if (!Number.isFinite(price) || price < 0) {
+      setFormError("Buy price must be a valid non-negative number.");
+      return;
+    }
+
+    try {
+      await api.createTransaction({
+        symbol: selectedInstrument.symbol,
+        transactionType: "BUY",
+        quantity,
+        price,
+        fee: 0,
+        tradeDate: firstBuyForm.tradeDate || null,
+        notes: firstBuyForm.notes.trim()
+      });
+
+      setSuccessMessage(`Added BUY transaction for ${selectedInstrument.symbol}.`);
+      clearSelection();
+      setSearchQuery("");
+      setSearchResults([]);
+      await loadData();
+    } catch (submitError) {
+      setFormError(
+        submitError instanceof Error ? submitError.message : "Unable to create transaction"
+      );
+    }
+  }
+
+  function openTransactionForm(input: {
+    symbol: string;
+    type?: TransactionType;
+    priceHint?: number | null;
+  }): void {
+    setTransactionForm({
+      symbol: input.symbol,
+      transactionType: input.type ?? "BUY",
+      quantity: "",
+      price: input.priceHint != null ? String(input.priceHint) : "",
+      fee: "0",
+      tradeDate: "",
+      notes: ""
+    });
+    setFormError(null);
+    setSuccessMessage(null);
+  }
+
+  async function handleTransactionSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    setFormError(null);
+    setSuccessMessage(null);
+
+    const quantity = Number(transactionForm.quantity);
+    const price = Number(transactionForm.price);
+    const fee = Number(transactionForm.fee || "0");
+
+    if (!transactionForm.symbol) {
+      setFormError("Please choose a symbol first.");
+      return;
+    }
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setFormError("Quantity must be greater than zero.");
+      return;
+    }
+    if (!Number.isFinite(price) || price < 0) {
+      setFormError("Price must be a valid non-negative number.");
+      return;
+    }
+    if (!Number.isFinite(fee) || fee < 0) {
+      setFormError("Fee must be a valid non-negative number.");
+      return;
+    }
+
+    try {
+      await api.createTransaction({
+        symbol: transactionForm.symbol,
+        transactionType: transactionForm.transactionType,
+        quantity,
+        price,
+        fee,
+        tradeDate: transactionForm.tradeDate || null,
+        notes: transactionForm.notes.trim()
+      });
+
+      setSuccessMessage(
+        `Added ${transactionForm.transactionType} transaction for ${transactionForm.symbol}.`
+      );
+      setTransactionForm(defaultTransactionForm);
+      await loadData();
+    } catch (submitError) {
+      setFormError(
+        submitError instanceof Error ? submitError.message : "Unable to create transaction"
+      );
     }
   }
 
   async function handleDeleteHolding(id: number): Promise<void> {
-    if (!window.confirm("Delete this holding?")) {
+    if (!window.confirm("Delete this purchased holding summary?")) {
       return;
     }
     try {
+      setFormError(null);
+      setSuccessMessage(null);
       await api.deleteHolding(id);
       await loadData();
     } catch (deleteError) {
@@ -189,9 +365,27 @@ export function HoldingsPage(): JSX.Element {
     }
   }
 
+  async function handleDeleteWatchlist(id: number): Promise<void> {
+    if (!window.confirm("Remove this symbol from watchlist?")) {
+      return;
+    }
+
+    try {
+      setFormError(null);
+      setSuccessMessage(null);
+      await api.deleteWatchlistItem(id);
+      await loadData();
+    } catch (deleteError) {
+      setFormError(
+        deleteError instanceof Error ? deleteError.message : "Unable to remove watchlist item"
+      );
+    }
+  }
+
   async function handleManualSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setFormError(null);
+    setSuccessMessage(null);
 
     const quantity = Number(manualForm.quantity);
     const averageCost = Number(manualForm.averageCost);
@@ -232,8 +426,10 @@ export function HoldingsPage(): JSX.Element {
     try {
       if (editingManualId) {
         await api.updateManualAsset(editingManualId, payload);
+        setSuccessMessage("Manual product updated.");
       } else {
         await api.createManualAsset(payload);
+        setSuccessMessage("Manual product added.");
       }
       setManualForm(defaultManualAssetForm);
       setEditingManualId(null);
@@ -249,6 +445,8 @@ export function HoldingsPage(): JSX.Element {
     }
 
     try {
+      setFormError(null);
+      setSuccessMessage(null);
       await api.deleteManualAsset(id);
       await loadData();
     } catch (deleteError) {
@@ -271,7 +469,8 @@ export function HoldingsPage(): JSX.Element {
       <div className="page-header">
         <h2>Holdings</h2>
         <p className="muted">
-          Manage ETF positions and manually tracked products. Current total value {formatCurrency(totals.marketValue)}.
+          Search-first workflow for HK ETFs with transaction-ready tracking. Current purchased value{" "}
+          {formatCurrency(totals.marketValue)}.
         </p>
       </div>
 
@@ -285,10 +484,279 @@ export function HoldingsPage(): JSX.Element {
       />
 
       {formError ? <p className="error">{formError}</p> : null}
+      {successMessage ? <p className="success">{successMessage}</p> : null}
 
       <section className="panel">
-        <h3>ETF Holdings</h3>
+        <h3>Search and Add</h3>
+        <p className="muted">
+          Step 1: search by symbol or English/Chinese name. Step 2: choose bought or not bought.
+        </p>
+
+        <label>
+          Search HK ETF
+          <input
+            value={searchQuery}
+            placeholder="Try 03010, 02100, Hang Seng, 恒生"
+            onChange={(event) => {
+              setSearchQuery(event.target.value);
+              clearSelection();
+            }}
+            onFocus={() => {
+              if (searchResults.length > 0) {
+                setSearchOpen(true);
+              }
+            }}
+            onKeyDown={(event) => {
+              if (!searchOpen || searchResults.length === 0) {
+                return;
+              }
+
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                setActiveSearchIndex((prev) => (prev + 1) % searchResults.length);
+                return;
+              }
+
+              if (event.key === "ArrowUp") {
+                event.preventDefault();
+                setActiveSearchIndex((prev) =>
+                  prev <= 0 ? searchResults.length - 1 : (prev - 1) % searchResults.length
+                );
+                return;
+              }
+
+              if (event.key === "Enter") {
+                event.preventDefault();
+                if (activeSearchIndex >= 0 && activeSearchIndex < searchResults.length) {
+                  const selected = searchResults[activeSearchIndex];
+                  if (selected) {
+                    selectInstrument(selected);
+                  }
+                }
+                return;
+              }
+
+              if (event.key === "Escape") {
+                setSearchOpen(false);
+              }
+            }}
+          />
+        </label>
+
+        {searchLoading ? <p className="muted">Searching instruments...</p> : null}
+
+        {searchOpen && searchQuery.trim() ? (
+          <div className="search-results-wrap">
+            {searchResults.length === 0 ? (
+              <p className="muted">No instrument matches. Try a shorter keyword.</p>
+            ) : (
+              <ul className="search-results">
+                {searchResults.map((item, index) => (
+                  <li key={item.symbol}>
+                    <button
+                      type="button"
+                      className={
+                        index === activeSearchIndex
+                          ? "search-result search-result--active"
+                          : "search-result"
+                      }
+                      onMouseDown={() => selectInstrument(item)}
+                    >
+                      <strong>{item.symbol}</strong>
+                      <span>{instrumentDisplayName(item)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ) : null}
+
+        {selectedInstrument ? (
+          <div className="instrument-preview">
+            <h4>
+              {selectedInstrument.symbol} - {selectedInstrument.nameEn}
+            </h4>
+            {selectedInstrument.nameZh ? <p className="muted">{selectedInstrument.nameZh}</p> : null}
+            <p className="muted">
+              {selectedInstrument.assetType} · {selectedInstrument.issuer || "Issuer N/A"} ·{" "}
+              {selectedInstrument.currency} · {selectedInstrument.region}
+            </p>
+
+            <div className="row-actions">
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => setPurchaseDecision("yes")}
+              >
+                Yes, already bought
+              </button>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => setPurchaseDecision("no")}
+              >
+                No, track only
+              </button>
+              <button type="button" className="btn btn--ghost" onClick={clearSelection}>
+                Clear
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {selectedInstrument && purchaseDecision === "no" ? (
+          <form className="data-form" onSubmit={(event) => void handleAddToWatchlist(event)}>
+            <h4>Add to watchlist</h4>
+            <label>
+              Optional note
+              <input
+                value={watchlistNote}
+                onChange={(event) => setWatchlistNote(event.target.value)}
+                placeholder="e.g. waiting for pullback"
+              />
+            </label>
+            <div className="row-actions">
+              <button type="submit" className="btn btn--primary">
+                Save as tracked only
+              </button>
+            </div>
+          </form>
+        ) : null}
+
+        {selectedInstrument && purchaseDecision === "yes" ? (
+          <form className="data-form" onSubmit={(event) => void handleFirstBuySubmit(event)}>
+            <h4>Record first BUY</h4>
+            <div className="form-grid">
+              <label>
+                Quantity
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  required
+                  value={firstBuyForm.quantity}
+                  onChange={(event) =>
+                    setFirstBuyForm((prev) => ({ ...prev, quantity: event.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                Buy Price
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  required
+                  value={firstBuyForm.price}
+                  onChange={(event) =>
+                    setFirstBuyForm((prev) => ({ ...prev, price: event.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                Trade Date (optional)
+                <input
+                  type="date"
+                  value={firstBuyForm.tradeDate}
+                  onChange={(event) =>
+                    setFirstBuyForm((prev) => ({ ...prev, tradeDate: event.target.value }))
+                  }
+                />
+              </label>
+              <label className="full-width">
+                Note (optional)
+                <textarea
+                  rows={2}
+                  value={firstBuyForm.notes}
+                  onChange={(event) =>
+                    setFirstBuyForm((prev) => ({ ...prev, notes: event.target.value }))
+                  }
+                />
+              </label>
+            </div>
+            <div className="row-actions">
+              <button type="submit" className="btn btn--primary">
+                Save purchased holding
+              </button>
+            </div>
+          </form>
+        ) : null}
+      </section>
+
+      <section className="panel">
+        <h3>Watchlist / Tracked Instruments</h3>
+        <p className="muted">Tracked ETFs with no purchased quantity yet.</p>
+
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Last Price</th>
+                <th>Price Source</th>
+                <th>Note</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.watchlist.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.symbol}</td>
+                  <td>{item.nameZh ? `${item.nameEn} / ${item.nameZh}` : item.nameEn}</td>
+                  <td>{item.assetType}</td>
+                  <td>
+                    {item.priceStatus === "cached" && item.currentPrice != null
+                      ? formatCurrency(item.currentPrice, item.currency)
+                      : "-"}
+                  </td>
+                  <td>
+                    {item.priceStatus === "cached"
+                      ? `${item.priceProvider ?? "cached"} (${formatDateTime(item.priceAsOf)})`
+                      : "No cached quote"}
+                  </td>
+                  <td>{item.notes || "-"}</td>
+                  <td>
+                    <div className="row-actions">
+                      <button
+                        type="button"
+                        className="btn btn--primary"
+                        onClick={() =>
+                          openTransactionForm({
+                            symbol: item.symbol,
+                            type: "BUY",
+                            priceHint: item.currentPrice
+                          })
+                        }
+                      >
+                        Add transaction
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--ghost"
+                        onClick={() => void handleDeleteWatchlist(item.id)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {data.watchlist.length === 0 ? (
+          <p className="muted">No tracked-only ETFs yet. Use search above to add one.</p>
+        ) : null}
+      </section>
+
+      <section className="panel">
+        <h3>Purchased Holdings</h3>
         <p className="muted">Unrealized P/L: {formatSignedCurrency(totals.unrealized)}</p>
+
         <div className="table-wrap">
           <table>
             <thead>
@@ -299,6 +767,7 @@ export function HoldingsPage(): JSX.Element {
                 <th>Qty</th>
                 <th>Avg Cost</th>
                 <th>Current Price</th>
+                <th>Price Source</th>
                 <th>Market Value</th>
                 <th>Unrealized P/L</th>
                 <th>Return %</th>
@@ -313,7 +782,16 @@ export function HoldingsPage(): JSX.Element {
                   <td>{holding.assetType}</td>
                   <td>{holding.quantity}</td>
                   <td>{formatCurrency(holding.averageCost, holding.currency)}</td>
-                  <td>{formatCurrency(holding.currentPrice, holding.currency)}</td>
+                  <td>
+                    {holding.priceStatus === "cached"
+                      ? formatCurrency(holding.currentPrice, holding.currency)
+                      : "-"}
+                  </td>
+                  <td>
+                    {holding.priceStatus === "cached"
+                      ? `${holding.priceProvider ?? "cached"} (${formatDateTime(holding.priceAsOf)})`
+                      : "No cached quote"}
+                  </td>
                   <td>{formatCurrency(holding.marketValue, holding.currency)}</td>
                   <td className={`tone-${numberTone(holding.unrealizedPL)}`}>
                     {formatSignedCurrency(holding.unrealizedPL, holding.currency)}
@@ -325,25 +803,16 @@ export function HoldingsPage(): JSX.Element {
                     <div className="row-actions">
                       <button
                         type="button"
-                        className="btn btn--ghost"
-                        onClick={() => {
-                          setEditingHoldingId(holding.id);
-                          setHoldingForm({
+                        className="btn btn--primary"
+                        onClick={() =>
+                          openTransactionForm({
                             symbol: holding.symbol,
-                            name: holding.name,
-                            assetType: holding.assetType,
-                            quantity: String(holding.quantity),
-                            averageCost: String(holding.averageCost),
-                            currency: holding.currency,
-                            region: holding.region,
-                            strategyLabel: holding.strategyLabel,
-                            riskGroup: holding.riskGroup,
-                            tags: toTagInput(holding.tags),
-                            notes: holding.notes
-                          });
-                        }}
+                            type: "BUY",
+                            priceHint: holding.currentPrice
+                          })
+                        }
                       >
-                        Edit
+                        Add transaction
                       </button>
                       <button
                         type="button"
@@ -359,138 +828,135 @@ export function HoldingsPage(): JSX.Element {
             </tbody>
           </table>
         </div>
+
         {data.holdings.length === 0 ? (
-          <p className="muted">No ETF holdings yet. Add your first symbol below.</p>
+          <p className="muted">No purchased holdings yet. Record a BUY transaction to start.</p>
         ) : null}
 
-        <form className="data-form" onSubmit={(event) => void handleHoldingSubmit(event)}>
-          <h4>{editingHoldingId ? "Edit holding" : "Add holding"}</h4>
-          <div className="form-grid">
-            <label>
-              Symbol / Code
-              <input
-                value={holdingForm.symbol}
-                onChange={(event) =>
-                  setHoldingForm((prev) => ({ ...prev, symbol: event.target.value.toUpperCase() }))
-                }
-                required
-              />
-            </label>
-            <label>
-              Asset Name
-              <input
-                value={holdingForm.name}
-                onChange={(event) => setHoldingForm((prev) => ({ ...prev, name: event.target.value }))}
-                required
-              />
-            </label>
-            <label>
-              Asset Type
-              <input
-                value={holdingForm.assetType}
-                onChange={(event) =>
-                  setHoldingForm((prev) => ({ ...prev, assetType: event.target.value }))
-                }
-                required
-              />
-            </label>
-            <label>
-              Quantity
-              <input
-                type="number"
-                min="0"
-                step="any"
-                value={holdingForm.quantity}
-                onChange={(event) => setHoldingForm((prev) => ({ ...prev, quantity: event.target.value }))}
-                required
-              />
-            </label>
-            <label>
-              Average Cost
-              <input
-                type="number"
-                min="0"
-                step="any"
-                value={holdingForm.averageCost}
-                onChange={(event) =>
-                  setHoldingForm((prev) => ({ ...prev, averageCost: event.target.value }))
-                }
-                required
-              />
-            </label>
-            <label>
-              Currency
-              <input
-                value={holdingForm.currency}
-                onChange={(event) =>
-                  setHoldingForm((prev) => ({ ...prev, currency: event.target.value.toUpperCase() }))
-                }
-                required
-              />
-            </label>
-            <label>
-              Region
-              <input
-                value={holdingForm.region}
-                onChange={(event) => setHoldingForm((prev) => ({ ...prev, region: event.target.value }))}
-              />
-            </label>
-            <label>
-              Strategy Label
-              <input
-                value={holdingForm.strategyLabel}
-                onChange={(event) =>
-                  setHoldingForm((prev) => ({ ...prev, strategyLabel: event.target.value }))
-                }
-              />
-            </label>
-            <label>
-              Risk Group
-              <select
-                value={holdingForm.riskGroup}
-                onChange={(event) =>
-                  setHoldingForm((prev) => ({ ...prev, riskGroup: event.target.value }))
-                }
-              >
-                <option value="growth">growth</option>
-                <option value="defensive">defensive</option>
-                <option value="income">income</option>
-              </select>
-            </label>
-            <label>
-              Tags (comma separated)
-              <input
-                value={holdingForm.tags}
-                onChange={(event) => setHoldingForm((prev) => ({ ...prev, tags: event.target.value }))}
-              />
-            </label>
-            <label className="full-width">
-              Notes
-              <textarea
-                rows={2}
-                value={holdingForm.notes}
-                onChange={(event) => setHoldingForm((prev) => ({ ...prev, notes: event.target.value }))}
-              />
-            </label>
-          </div>
-          <div className="row-actions">
-            <button type="submit" className="btn btn--primary">
-              {editingHoldingId ? "Update Holding" : "Add Holding"}
-            </button>
-            {editingHoldingId ? (
+        {transactionForm.symbol ? (
+          <form className="data-form" onSubmit={(event) => void handleTransactionSubmit(event)}>
+            <h4>Add transaction for {transactionForm.symbol}</h4>
+            <div className="form-grid">
+              <label>
+                Transaction Type
+                <select
+                  value={transactionForm.transactionType}
+                  onChange={(event) =>
+                    setTransactionForm((prev) => ({
+                      ...prev,
+                      transactionType: event.target.value as TransactionType
+                    }))
+                  }
+                >
+                  <option value="BUY">BUY</option>
+                  <option value="SELL">SELL</option>
+                </select>
+              </label>
+              <label>
+                Quantity
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  required
+                  value={transactionForm.quantity}
+                  onChange={(event) =>
+                    setTransactionForm((prev) => ({ ...prev, quantity: event.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                Price
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  required
+                  value={transactionForm.price}
+                  onChange={(event) =>
+                    setTransactionForm((prev) => ({ ...prev, price: event.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                Fee
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={transactionForm.fee}
+                  onChange={(event) =>
+                    setTransactionForm((prev) => ({ ...prev, fee: event.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                Trade Date (optional)
+                <input
+                  type="date"
+                  value={transactionForm.tradeDate}
+                  onChange={(event) =>
+                    setTransactionForm((prev) => ({ ...prev, tradeDate: event.target.value }))
+                  }
+                />
+              </label>
+              <label className="full-width">
+                Notes
+                <textarea
+                  rows={2}
+                  value={transactionForm.notes}
+                  onChange={(event) =>
+                    setTransactionForm((prev) => ({ ...prev, notes: event.target.value }))
+                  }
+                />
+              </label>
+            </div>
+            <div className="row-actions">
+              <button type="submit" className="btn btn--primary">
+                Save Transaction
+              </button>
               <button
                 type="button"
                 className="btn btn--ghost"
-                onClick={() => {
-                  setEditingHoldingId(null);
-                  setHoldingForm(defaultHoldingForm);
-                }}
+                onClick={() => setTransactionForm(defaultTransactionForm)}
               >
-                Cancel Edit
+                Cancel
               </button>
-            ) : null}
-          </div>
-        </form>
+            </div>
+          </form>
+        ) : null}
+
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Symbol</th>
+                <th>Type</th>
+                <th>Quantity</th>
+                <th>Price</th>
+                <th>Fee</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.transactions.slice(0, 12).map((transaction) => (
+                <tr key={transaction.id}>
+                  <td>{transaction.tradeDate}</td>
+                  <td>{transaction.symbol}</td>
+                  <td>{transaction.transactionType}</td>
+                  <td>{transaction.quantity}</td>
+                  <td>{formatCurrency(transaction.price)}</td>
+                  <td>{formatCurrency(transaction.fee)}</td>
+                  <td>{transaction.notes || "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {data.transactions.length === 0 ? (
+          <p className="muted">No transactions recorded yet.</p>
+        ) : null}
       </section>
 
       <section className="panel">
@@ -507,6 +973,7 @@ export function HoldingsPage(): JSX.Element {
                 <th>Qty</th>
                 <th>Avg Cost</th>
                 <th>Manual Price/NAV</th>
+                <th>Price Source</th>
                 <th>Market Value</th>
                 <th>Unrealized P/L</th>
                 <th>Return %</th>
@@ -522,6 +989,7 @@ export function HoldingsPage(): JSX.Element {
                   <td>{asset.quantity}</td>
                   <td>{formatCurrency(asset.averageCost, asset.currency)}</td>
                   <td>{formatCurrency(asset.currentPrice, asset.currency)}</td>
+                  <td>{`${asset.priceProvider} (${formatDateTime(asset.priceAsOf)})`}</td>
                   <td>{formatCurrency(asset.marketValue, asset.currency)}</td>
                   <td className={`tone-${numberTone(asset.unrealizedPL)}`}>
                     {formatSignedCurrency(asset.unrealizedPL, asset.currency)}

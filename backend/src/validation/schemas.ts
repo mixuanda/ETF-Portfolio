@@ -82,6 +82,21 @@ export const createDividendSchema = z.object({
 
 export const updateDividendSchema = createDividendSchema.partial();
 
+export const createWatchlistSchema = z.object({
+  symbol: symbolSchema,
+  notes: optionalTextSchema
+});
+
+export const createTransactionSchema = z.object({
+  symbol: symbolSchema,
+  transactionType: z.enum(["BUY", "SELL"]),
+  quantity: z.number().finite().positive(),
+  price: z.number().finite().nonnegative(),
+  fee: z.number().finite().nonnegative().optional().default(0),
+  tradeDate: dateSchema.optional().nullable(),
+  notes: optionalTextSchema
+});
+
 export const updateSettingsSchema = z.object({
   quoteProvider: z.enum(["yahoo", "demo"]).optional(),
   refreshTimeoutMs: z.number().int().min(1000).max(20000).optional(),

@@ -1,13 +1,6 @@
 import type { QuoteData, QuoteError } from "@portfolio/shared";
 import type { QuoteProvider, QuoteProviderResult } from "../QuoteProvider.js";
-
-function normalizeHongKongSymbol(symbol: string): string {
-  const trimmed = symbol.trim().toUpperCase();
-  if (/^\d{4,5}$/.test(trimmed)) {
-    return `${Number(trimmed)}.HK`;
-  }
-  return trimmed;
-}
+import { normalizeForYahoo } from "../symbolNormalization.js";
 
 type YahooQuotePayload = {
   quoteResponse?: {
@@ -38,7 +31,7 @@ export class YahooQuoteProvider implements QuoteProvider {
 
     const normalizedPairs = symbols.map((symbol) => ({
       original: symbol,
-      normalized: normalizeHongKongSymbol(symbol)
+      normalized: normalizeForYahoo(symbol)
     }));
 
     const mapNormalizedToOriginal = new Map(
@@ -128,7 +121,8 @@ export class YahooQuoteProvider implements QuoteProvider {
         asOf: item.regularMarketTime
           ? new Date(item.regularMarketTime * 1000).toISOString()
           : new Date().toISOString(),
-        provider: this.name
+        provider: this.name,
+        status: "success"
       });
     }
 

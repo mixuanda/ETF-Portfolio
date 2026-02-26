@@ -10,6 +10,9 @@ The app stores your data locally in SQLite and refreshes delayed quotes only
 when you click **Refresh Prices**.
 
 - Tracks HK ETF holdings and manual products.
+- Uses a search-first ETF add flow from a local instrument catalog.
+- Supports tracked-only watchlist symbols (not yet purchased).
+- Records BUY/SELL transactions and keeps holdings as a summary layer.
 - Stores delayed quote snapshots in `asset_snapshots`.
 - Tracks dividend history and includes dividends in total return.
 - Shows dashboard, holdings, dividends, analysis, and settings pages.
@@ -19,7 +22,8 @@ when you click **Refresh Prices**.
 
 The app has two explicit modes. Normal use is real mode.
 
-- **Real mode (default):** Yahoo delayed quotes only.
+- **Real mode (default):** Yahoo delayed quotes first, then HKEX delayed quote
+  backup for failed symbols.
 - **Demo mode (opt-in):** demo provider can be selected for testing.
 
 Important safety behavior:
@@ -55,6 +59,34 @@ Follow these steps to run locally.
 
 Backend runs on `http://localhost:4000`.
 
+## Holdings workflow (search-first)
+
+The Holdings page now uses a short search-first flow instead of the old large
+manual ETF form.
+
+Default add path:
+
+1. Search an ETF by code or name (English or Chinese, when available).
+2. Select instrument from results.
+3. Choose whether it is already bought.
+4. If bought: enter quantity + buy price (+ optional trade date/note).
+5. If not bought: save to watchlist/tracked-only section.
+
+You can later add more BUY/SELL trades for the same symbol from the purchased
+holdings section using **Add transaction**.
+
+## Data model direction
+
+The backend now includes transaction-ready tables while keeping compatibility
+with the current holdings display.
+
+- `transactions` stores trade events (`BUY` / `SELL`).
+- `watchlist` stores tracked instruments with no purchased position yet.
+- `holdings` remains a per-symbol summary layer for current UI compatibility.
+
+Long term, transaction records are intended to be the main source of truth for
+portfolio position history.
+
 ## Deploy on Vercel
 
 This repository includes `vercel.json` and an API bridge at `api/index.ts`, so
@@ -64,6 +96,8 @@ you can deploy frontend and backend in one Vercel project.
 2. Keep project root at repository root.
 3. Set these environment variables in Vercel project settings:
    - `DEFAULT_QUOTE_PROVIDER=yahoo`
+   - `ENABLE_HKEX_BACKUP=true`
+   - `REQUEST_TIMEOUT_MS=8000`
    - `ENABLE_DEMO_MODE=false`
    - `ALLOW_DEMO_FALLBACK=false`
 4. Deploy to Production.
@@ -94,6 +128,8 @@ Copy `.env.example` to `.env` and adjust as needed.
 | `FRONTEND_ORIGIN` | `http://localhost:5173` | CORS origin for frontend |
 | `DB_PATH` | `database/portfolio.db` | SQLite file path override |
 | `DEFAULT_QUOTE_PROVIDER` | `yahoo` | Default provider (`yahoo` or `demo`) |
+| `REQUEST_TIMEOUT_MS` | `8000` | Provider request timeout in milliseconds |
+| `ENABLE_HKEX_BACKUP` | `true` | Enables HKEX delayed quote backup when Yahoo fails |
 | `ENABLE_DEMO_MODE` | `false` | Enables explicit demo/testing mode |
 | `ALLOW_DEMO_FALLBACK` | `false` | Allows Yahoo to fall back to demo only when demo mode is enabled |
 
@@ -104,15 +140,19 @@ The refresh flow is manual and cache-preserving.
 1. You open the site.
 2. The frontend shows cached snapshot data.
 3. You click **Refresh Prices**.
-4. Backend fetches delayed quotes from provider.
-5. On success, new real quotes are persisted.
-6. On failure, existing cached snapshots remain unchanged.
+4. Backend fetches delayed quotes from Yahoo first.
+5. If Yahoo fails for a symbol and HKEX backup is enabled, backend retries that
+   symbol via HKEX delayed quote endpoint.
+6. On success, only successful real quotes are persisted.
+7. On failure, existing cached snapshots remain unchanged.
 
-Refresh status is shown as `idle`, `refreshing`, `success`, or `failed`.
+Refresh status is shown as `idle`, `refreshing`, `success`,
+`partial_success`, or `failed`.
 Dashboard and holdings pages display:
 
 - Last updated timestamp.
 - Last successful source/provider.
+- Provider used for each refreshed symbol.
 - Cached-data state.
 - Failure warning when refresh does not complete.
 
@@ -123,6 +163,14 @@ startup.
 
 - `npm run db:init` does not seed holdings or quote snapshots.
 - `npm run db:seed` intentionally loads demo holdings, snapshots, and dividends.
+
+Instrument catalog behavior:
+
+- A baseline local ETF catalog is loaded from `database/instruments.sql` during
+  database initialization/startup.
+- This catalog powers `GET /api/instruments/search`.
+- Existing holdings symbols are also backfilled into `instruments` when needed
+  so older databases remain compatible.
 
 Demo seed includes sample HK ETF symbols:
 
@@ -141,6 +189,7 @@ Quote fetching is abstracted behind a service layer.
 - Coordinator: `backend/src/services/quotes/QuoteService.ts`
 - Provider selector: `backend/src/services/quotes/createQuoteService.ts`
 - Yahoo implementation: `backend/src/services/quotes/providers/YahooQuoteProvider.ts`
+- HKEX backup implementation: `backend/src/services/quotes/providers/HkexQuoteProvider.ts`
 - Demo implementation: `backend/src/services/quotes/providers/DemoQuoteProvider.ts`
 
 To add another provider, implement `QuoteProvider` and register it in
@@ -152,11 +201,20 @@ Yahoo is used as an unofficial delayed quote source. It can occasionally fail,
 timeout, or rate-limit. When this happens, the app keeps the last cached data
 and surfaces a warning instead of writing fabricated prices.
 
+## HKEX backup note
+
+HKEX backup uses HKEX public delayed quote widget endpoints as a secondary
+source for symbols that fail in Yahoo. If HKEX is also unavailable, no quote is
+fabricated and older cached data stays in place.
+
 ## SQLite schema
 
 `database/schema.sql` defines:
 
+- `instruments`
 - `holdings`
+- `watchlist`
+- `transactions`
 - `manual_assets`
 - `asset_snapshots`
 - `dividends`
@@ -170,6 +228,13 @@ Core endpoints:
 - `GET /api/holdings`
 - `POST /api/refresh`
 - `GET /api/dividends`
+- `GET /api/instruments/search?q=...`
+- `GET /api/instruments/:symbol`
+- `GET /api/watchlist`
+- `POST /api/watchlist`
+- `DELETE /api/watchlist/:id`
+- `GET /api/transactions?symbol=...`
+- `POST /api/transactions`
 - `POST /api/holdings`
 - `PATCH /api/holdings/:id`
 - `DELETE /api/holdings/:id`

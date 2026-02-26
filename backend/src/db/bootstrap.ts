@@ -8,6 +8,7 @@ const backendDir = path.resolve(__dirname, "..", "..");
 const rootDir = path.resolve(backendDir, "..");
 
 const schemaPath = path.resolve(rootDir, "database", "schema.sql");
+const instrumentsPath = path.resolve(rootDir, "database", "instruments.sql");
 const seedPath = path.resolve(rootDir, "database", "seed.sql");
 
 function runSqlFile(filePath: string): void {
@@ -15,10 +16,54 @@ function runSqlFile(filePath: string): void {
   db.exec(sql);
 }
 
+function ensureSchemaCompatibility(): void {
+  const columns = db.prepare("PRAGMA table_info(asset_snapshots)").all() as Array<{ name: string }>;
+  const hasStatusColumn = columns.some((column) => column.name === "status");
+
+  if (!hasStatusColumn) {
+    db.exec("ALTER TABLE asset_snapshots ADD COLUMN status TEXT NOT NULL DEFAULT 'success'");
+  }
+}
+
+function ensureInstrumentCatalogBaseline(): void {
+  db.exec(`
+    INSERT INTO instruments (
+      symbol,
+      name_en,
+      asset_type,
+      issuer,
+      currency,
+      region,
+      search_keywords,
+      is_active,
+      updated_at
+    )
+    SELECT
+      h.symbol,
+      h.name,
+      h.asset_type,
+      '',
+      h.currency,
+      h.region,
+      lower(h.symbol || ' ' || h.name),
+      1,
+      CURRENT_TIMESTAMP
+    FROM holdings h
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM instruments i
+      WHERE i.symbol = h.symbol
+    )
+  `);
+}
+
 export function initializeDatabase(options?: { seed?: boolean }): {
   seeded: boolean;
 } {
   runSqlFile(schemaPath);
+  runSqlFile(instrumentsPath);
+  ensureSchemaCompatibility();
+  ensureInstrumentCatalogBaseline();
 
   let seeded = false;
   const shouldSeed = Boolean(options?.seed);

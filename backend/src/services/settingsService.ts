@@ -19,7 +19,7 @@ type SettingsKey =
 
 const DEFAULT_SETTINGS: SettingsResponse = {
   quoteProvider: config.defaultQuoteProvider,
-  refreshTimeoutMs: 6000,
+  refreshTimeoutMs: config.requestTimeoutMs,
   refreshRetries: 1,
   customTags: ["equity", "bond", "money market", "dividend", "defensive"],
   baseCurrency: "HKD",
@@ -27,6 +27,7 @@ const DEFAULT_SETTINGS: SettingsResponse = {
   lastRefreshAt: null,
   lastRefreshProvider: null,
   lastRefreshError: null,
+  enableHkexBackup: config.enableHkexBackup,
   enableDemoMode: config.enableDemoMode,
   allowDemoFallback: config.enableDemoMode && config.allowDemoFallback
 };
@@ -67,7 +68,13 @@ function parseNumber(value: string | undefined, fallback: number): number {
 }
 
 function parseRefreshStatus(value: string | undefined): RefreshStatus {
-  if (value === "idle" || value === "refreshing" || value === "success" || value === "failed") {
+  if (
+    value === "idle" ||
+    value === "refreshing" ||
+    value === "success" ||
+    value === "partial_success" ||
+    value === "failed"
+  ) {
     return value;
   }
   return "idle";
@@ -127,6 +134,7 @@ export function getSettings(): SettingsResponse {
     lastRefreshAt,
     lastRefreshProvider,
     lastRefreshError,
+    enableHkexBackup: config.enableHkexBackup,
     enableDemoMode: config.enableDemoMode,
     allowDemoFallback: config.enableDemoMode && config.allowDemoFallback
   };

@@ -3,10 +3,12 @@ import express from "express";
 import { config } from "./config.js";
 import dividendsRoutes from "./routes/dividends.js";
 import holdingsRoutes from "./routes/holdings.js";
+import instrumentsRoutes from "./routes/instruments.js";
 import manualAssetsRoutes from "./routes/manualAssets.js";
 import portfolioRoutes from "./routes/portfolio.js";
 import refreshRoutes from "./routes/refresh.js";
 import settingsRoutes from "./routes/settings.js";
+import trackingRoutes from "./routes/tracking.js";
 
 const app = express();
 
@@ -24,8 +26,10 @@ app.get("/api/health", (_req, res) => {
 
 app.use("/api", portfolioRoutes);
 app.use("/api", holdingsRoutes);
+app.use("/api", instrumentsRoutes);
 app.use("/api", manualAssetsRoutes);
 app.use("/api", dividendsRoutes);
+app.use("/api", trackingRoutes);
 app.use("/api", refreshRoutes);
 app.use("/api", settingsRoutes);
 

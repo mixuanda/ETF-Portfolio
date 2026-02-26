@@ -20,6 +20,12 @@ import {
 import db from "../db/client.js";
 import { getSettings } from "./settingsService.js";
 import { parseTags, stringifyTags } from "../utils/parsers.js";
+import {
+  listTrackedSymbols as listTrackedSymbolsFromTracking,
+  listTransactions,
+  listWatchlistWithQuotes,
+  removeFromWatchlistBySymbol
+} from "./trackingService.js";
 
 type HoldingRow = {
   id: number;
@@ -65,6 +71,7 @@ type SnapshotRow = {
   currency: string;
   provider: string;
   as_of: string;
+  status: "success" | "failed";
   fetched_at: string;
 };
 
@@ -130,6 +137,7 @@ function mapSnapshotRow(row: SnapshotRow): AssetSnapshot {
     currency: row.currency,
     provider: row.provider,
     asOf: row.as_of,
+    status: row.status,
     fetchedAt: row.fetched_at
   };
 }
@@ -163,6 +171,7 @@ function getLatestSnapshots(symbols: string[]): Map<string, AssetSnapshot> {
            s.currency,
            s.provider,
            s.as_of,
+           s.status,
            s.fetched_at
     FROM asset_snapshots s
     INNER JOIN (
@@ -221,7 +230,9 @@ export function listHoldingsWithMetrics(): HoldingWithMetrics[] {
     return {
       ...holding,
       ...metrics,
-      priceAsOf: snapshot?.asOf ?? null
+      priceAsOf: snapshot?.asOf ?? null,
+      priceProvider: snapshot?.provider ?? null,
+      priceStatus: snapshot ? "cached" : "missing"
     };
   });
 }
@@ -240,7 +251,9 @@ export function listManualAssetsWithMetrics(): ManualAssetWithMetrics[] {
       ...asset,
       ...metrics,
       priceAsOf: asset.priceUpdatedAt,
-      todayChange: null
+      todayChange: null,
+      priceProvider: "manual",
+      priceStatus: "cached"
     };
   });
 }
@@ -249,7 +262,9 @@ export function listHoldings(): HoldingsResponse {
   const settings = getSettings();
   return {
     holdings: listHoldingsWithMetrics(),
+    watchlist: listWatchlistWithQuotes(),
     manualAssets: listManualAssetsWithMetrics(),
+    transactions: listTransactions({ limit: 100 }),
     refreshStatus: settings.lastRefreshStatus,
     lastRefreshAt: settings.lastRefreshAt,
     lastRefreshProvider: settings.lastRefreshProvider,
@@ -258,10 +273,7 @@ export function listHoldings(): HoldingsResponse {
 }
 
 export function listTrackedSymbols(): string[] {
-  const rows = db.prepare("SELECT symbol FROM holdings ORDER BY symbol ASC").all() as Array<{
-    symbol: string;
-  }>;
-  return rows.map((row) => row.symbol);
+  return listTrackedSymbolsFromTracking();
 }
 
 export function saveQuoteSnapshots(quotes: QuoteData[], fetchedAt: string): void {
@@ -279,6 +291,7 @@ export function saveQuoteSnapshots(quotes: QuoteData[], fetchedAt: string): void
         currency,
         provider,
         as_of,
+        status,
         fetched_at
       ) VALUES (
         @symbol,
@@ -288,6 +301,7 @@ export function saveQuoteSnapshots(quotes: QuoteData[], fetchedAt: string): void
         @currency,
         @provider,
         @asOf,
+        @status,
         @fetchedAt
       )
     `
@@ -475,6 +489,8 @@ export function createHolding(input: {
   tags: string[];
   notes: string;
 }): HoldingWithMetrics {
+  const normalizedSymbol = input.symbol.trim().toUpperCase();
+
   const result = db
     .prepare(
       `
@@ -509,8 +525,11 @@ export function createHolding(input: {
     )
     .run({
       ...input,
+      symbol: normalizedSymbol,
       tags: stringifyTags(input.tags)
     });
+
+  removeFromWatchlistBySymbol(normalizedSymbol);
 
   const created = getHoldingWithMetricsById(Number(result.lastInsertRowid));
   if (!created) {
@@ -589,7 +608,12 @@ export function updateHolding(
     db.prepare(query).run(params);
   }
 
-  return getHoldingWithMetricsById(id);
+  const updated = getHoldingWithMetricsById(id);
+  if (updated && updated.quantity > 0) {
+    removeFromWatchlistBySymbol(updated.symbol);
+  }
+
+  return updated;
 }
 
 export function deleteHolding(id: number): boolean {

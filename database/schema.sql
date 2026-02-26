@@ -17,6 +17,59 @@ CREATE TABLE IF NOT EXISTS holdings (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS instruments (
+  symbol TEXT PRIMARY KEY,
+  name_en TEXT NOT NULL,
+  name_zh TEXT NOT NULL DEFAULT '',
+  asset_type TEXT NOT NULL,
+  issuer TEXT NOT NULL DEFAULT '',
+  currency TEXT NOT NULL DEFAULT 'HKD',
+  region TEXT NOT NULL DEFAULT 'Hong Kong',
+  search_keywords TEXT NOT NULL DEFAULT '',
+  is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_instruments_symbol
+  ON instruments (symbol);
+
+CREATE INDEX IF NOT EXISTS idx_instruments_name_en
+  ON instruments (name_en COLLATE NOCASE);
+
+CREATE INDEX IF NOT EXISTS idx_instruments_name_zh
+  ON instruments (name_zh);
+
+CREATE TABLE IF NOT EXISTS watchlist (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  symbol TEXT NOT NULL UNIQUE,
+  notes TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (symbol) REFERENCES instruments(symbol)
+    ON UPDATE CASCADE
+    ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS transactions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  symbol TEXT NOT NULL,
+  transaction_type TEXT NOT NULL CHECK (transaction_type IN ('BUY', 'SELL')),
+  quantity REAL NOT NULL CHECK (quantity > 0),
+  price REAL NOT NULL CHECK (price >= 0),
+  fee REAL NOT NULL DEFAULT 0 CHECK (fee >= 0),
+  trade_date TEXT NOT NULL,
+  notes TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (symbol) REFERENCES instruments(symbol)
+    ON UPDATE CASCADE
+    ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS idx_transactions_symbol_trade
+  ON transactions (symbol, trade_date DESC, id DESC);
+
 CREATE TABLE IF NOT EXISTS manual_assets (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   code TEXT NOT NULL UNIQUE,
@@ -45,6 +98,7 @@ CREATE TABLE IF NOT EXISTS asset_snapshots (
   currency TEXT NOT NULL DEFAULT 'HKD',
   provider TEXT NOT NULL,
   as_of TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'success',
   fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

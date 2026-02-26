@@ -53,6 +53,8 @@ export const config = {
   frontendOrigin: process.env.FRONTEND_ORIGIN ?? "http://localhost:5173",
   dbPath: resolveDbPath(process.env.DB_PATH),
   defaultQuoteProvider: toProvider(process.env.DEFAULT_QUOTE_PROVIDER),
+  requestTimeoutMs: toNumber(process.env.REQUEST_TIMEOUT_MS, 8000),
+  enableHkexBackup: toBoolean(process.env.ENABLE_HKEX_BACKUP, true),
   enableDemoMode: toBoolean(process.env.ENABLE_DEMO_MODE, false),
   allowDemoFallback: toBoolean(process.env.ALLOW_DEMO_FALLBACK, false)
 } as const;

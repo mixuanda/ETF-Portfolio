@@ -47,7 +47,7 @@ export function DashboardPage(): JSX.Element {
 
   const activeRefreshMessage =
     refreshStatus === "idle"
-      ? effectiveStatus === "failed"
+      ? effectiveStatus === "failed" || effectiveStatus === "partial_success"
         ? portfolio?.summary.lastRefreshError ??
           "Latest refresh failed. Showing previous cached snapshot data."
         : "Cached prices loaded. Use Refresh Prices when you want delayed updates."

@@ -8,6 +8,7 @@ const statusLabelMap: Record<RefreshStatus, string> = {
   idle: "idle",
   refreshing: "refreshing",
   success: "success",
+  partial_success: "partial success",
   failed: "failed"
 };
 

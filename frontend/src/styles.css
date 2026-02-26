@@ -199,6 +199,11 @@ p {
   color: #1a6d3a;
 }
 
+.status-pill--partial_success {
+  background: #fff1d8;
+  color: #8a5c06;
+}
+
 .status-pill--failed {
   background: #ffe2de;
   color: #8c3026;
@@ -295,6 +300,51 @@ p {
 .table-wrap {
   width: 100%;
   overflow-x: auto;
+}
+
+.search-results-wrap {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.search-results {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.search-result {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid #e0e8f1;
+  background: transparent;
+  text-align: left;
+  display: grid;
+  gap: 0.16rem;
+  padding: 0.56rem 0.64rem;
+  cursor: pointer;
+}
+
+.search-result span {
+  color: var(--muted);
+  font-size: 0.83rem;
+}
+
+.search-result:hover,
+.search-result--active {
+  background: #eaf4fb;
+}
+
+.instrument-preview {
+  border: 1px dashed #bed0e1;
+  border-radius: 10px;
+  background: #f8fbfe;
+  padding: 0.7rem;
+  display: grid;
+  gap: 0.45rem;
 }
 
 table {

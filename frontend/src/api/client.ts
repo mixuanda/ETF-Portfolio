@@ -3,10 +3,14 @@ import type {
   DividendsResponse,
   HoldingWithMetrics,
   HoldingsResponse,
+  InstrumentDetail,
+  InstrumentSearchResult,
   ManualAssetWithMetrics,
   PortfolioResponse,
   RefreshResponse,
-  SettingsResponse
+  SettingsResponse,
+  TransactionRecord,
+  WatchlistItem
 } from "@portfolio/shared";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -79,6 +83,21 @@ export interface DividendInput {
 
 export type DividendUpdateInput = Partial<DividendInput>;
 
+export interface WatchlistInput {
+  symbol: string;
+  notes: string;
+}
+
+export interface TransactionInput {
+  symbol: string;
+  transactionType: "BUY" | "SELL";
+  quantity: number;
+  price: number;
+  fee?: number;
+  tradeDate?: string | null;
+  notes: string;
+}
+
 export interface SettingsEnvelope {
   settings: SettingsResponse;
   trackedSymbols: string[];
@@ -97,6 +116,14 @@ export const api = {
   getHoldings: () => request<HoldingsResponse>("/api/holdings"),
   refreshPrices: () => request<RefreshResponse>("/api/refresh", { method: "POST" }),
 
+  searchInstruments: (query: string) =>
+    request<{ results: InstrumentSearchResult[] }>(
+      `/api/instruments/search?q=${encodeURIComponent(query.trim())}`
+    ),
+
+  getInstrument: (symbol: string) =>
+    request<{ instrument: InstrumentDetail }>(`/api/instruments/${encodeURIComponent(symbol)}`),
+
   createHolding: (body: HoldingInput) =>
     request<HoldingWithMetrics>("/api/holdings", {
       method: "POST",
@@ -112,6 +139,30 @@ export const api = {
   deleteHolding: (id: number) =>
     request<void>(`/api/holdings/${id}`, {
       method: "DELETE"
+    }),
+
+  addToWatchlist: (body: WatchlistInput) =>
+    request<WatchlistItem>("/api/watchlist", {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
+
+  deleteWatchlistItem: (id: number) =>
+    request<void>(`/api/watchlist/${id}`, {
+      method: "DELETE"
+    }),
+
+  getTransactions: (symbol?: string) =>
+    request<{ transactions: TransactionRecord[] }>(
+      symbol
+        ? `/api/transactions?symbol=${encodeURIComponent(symbol)}`
+        : "/api/transactions"
+    ),
+
+  createTransaction: (body: TransactionInput) =>
+    request<TransactionRecord>("/api/transactions", {
+      method: "POST",
+      body: JSON.stringify(body)
     }),
 
   createManualAsset: (body: ManualAssetInput) =>

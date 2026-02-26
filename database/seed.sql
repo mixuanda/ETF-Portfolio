@@ -18,6 +18,38 @@ INSERT OR IGNORE INTO holdings (
   ('03450', 'Money Market ETF', 'money market etf', 1500, 10.05, 'HKD', 'Hong Kong', 'cash', 'defensive', '["money market","defensive"]', 'Liquidity bucket'),
   ('03466', 'Global Dividend ETF', 'equity etf', 900, 25.80, 'HKD', 'Global', 'dividend', 'defensive', '["equity","dividend"]', 'Dividend tilt allocation');
 
+INSERT OR IGNORE INTO watchlist (
+  symbol,
+  notes
+) VALUES (
+  '02800',
+  'Tracked for potential first buy'
+);
+
+INSERT INTO transactions (
+  symbol,
+  transaction_type,
+  quantity,
+  price,
+  fee,
+  trade_date,
+  notes
+)
+SELECT
+  h.symbol,
+  'BUY',
+  h.quantity,
+  h.average_cost,
+  0,
+  date('now', '-90 day'),
+  'Seed baseline position from summary holding'
+FROM holdings h
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM transactions t
+  WHERE t.symbol = h.symbol
+);
+
 INSERT OR IGNORE INTO manual_assets (
   code,
   name,
@@ -176,7 +208,7 @@ WHERE NOT EXISTS (
 
 INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES
   ('quote_provider', 'yahoo', CURRENT_TIMESTAMP),
-  ('refresh_timeout_ms', '6000', CURRENT_TIMESTAMP),
+  ('refresh_timeout_ms', '8000', CURRENT_TIMESTAMP),
   ('refresh_retries', '1', CURRENT_TIMESTAMP),
   ('last_refresh_status', 'success', CURRENT_TIMESTAMP),
   ('last_refresh_at', datetime('now', '-1 day'), CURRENT_TIMESTAMP),

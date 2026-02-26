@@ -125,6 +125,9 @@ export function SettingsPage(): JSX.Element {
           Demo mode: <strong>{data.settings.enableDemoMode ? "enabled" : "disabled"}</strong> | Demo
           fallback: <strong>{data.settings.allowDemoFallback ? "enabled" : "disabled"}</strong>
         </p>
+        <p className="muted">
+          HKEX backup source: <strong>{data.settings.enableHkexBackup ? "enabled" : "disabled"}</strong>
+        </p>
         {data.settings.lastRefreshError ? (
           <p className="muted">Latest refresh message: {data.settings.lastRefreshError}</p>
         ) : null}

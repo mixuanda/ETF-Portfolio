@@ -12,7 +12,7 @@ export class QuoteService {
     private readonly primaryProvider: QuoteProvider,
     private readonly options: {
       retries: number;
-      fallbackProvider?: QuoteProvider;
+      backupProviders?: QuoteProvider[];
     }
   ) {}
 
@@ -49,18 +49,21 @@ export class QuoteService {
       }
     }
 
-    let usedFallback = false;
-    if (remaining.length > 0 && this.options.fallbackProvider) {
-      try {
-        const fallbackResult = await this.options.fallbackProvider.fetchQuotes(remaining);
-        usedFallback = fallbackResult.quotes.length > 0;
+    const backups = this.options.backupProviders ?? [];
+    for (const backup of backups) {
+      if (remaining.length === 0) {
+        break;
+      }
 
-        for (const quote of fallbackResult.quotes) {
+      try {
+        const backupResult = await backup.fetchQuotes(remaining);
+
+        for (const quote of backupResult.quotes) {
           quoteBySymbol.set(quote.symbol, quote);
           errorBySymbol.delete(quote.symbol);
         }
 
-        for (const entry of fallbackResult.errors) {
+        for (const entry of backupResult.errors) {
           if (!quoteBySymbol.has(entry.symbol)) {
             errorBySymbol.set(entry.symbol, entry.message);
           }
@@ -68,10 +71,10 @@ export class QuoteService {
 
         remaining = remaining.filter((symbol) => !quoteBySymbol.has(symbol));
       } catch (error) {
-        const fallbackErrorMessage =
-          error instanceof Error ? error.message : "Fallback quote provider failed";
+        const backupErrorMessage =
+          error instanceof Error ? error.message : `${backup.name} quote provider failed unexpectedly`;
         for (const symbol of remaining) {
-          errorBySymbol.set(symbol, fallbackErrorMessage);
+          errorBySymbol.set(symbol, backupErrorMessage);
         }
       }
     }
@@ -90,9 +93,8 @@ export class QuoteService {
       }
     }
 
-    const providerLabel = usedFallback
-      ? `${this.primaryProvider.name} + ${this.options.fallbackProvider?.name}`
-      : this.primaryProvider.name;
+    const usedProviders = [...new Set([...quoteBySymbol.values()].map((quote) => quote.provider))];
+    const providerLabel = usedProviders.length > 0 ? usedProviders.join(" + ") : this.primaryProvider.name;
 
     const errors: QuoteError[] = [...errorBySymbol.entries()].map(([symbol, message]) => ({
       symbol,

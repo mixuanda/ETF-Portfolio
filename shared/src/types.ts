@@ -1,4 +1,4 @@
-export type RefreshStatus = "idle" | "refreshing" | "success" | "failed";
+export type RefreshStatus = "idle" | "refreshing" | "success" | "partial_success" | "failed";
 
 export type QuoteProviderName = "yahoo" | "demo";
 
@@ -47,6 +47,7 @@ export interface AssetSnapshot {
   provider: string;
   asOf: string;
   fetchedAt: string;
+  status: "success" | "failed";
 }
 
 export interface DividendRecord {
@@ -73,10 +74,49 @@ export interface PositionMetrics {
 
 export interface HoldingWithMetrics extends Holding, PositionMetrics {
   priceAsOf: string | null;
+  priceProvider: string | null;
+  priceStatus: "cached" | "missing";
+}
+
+export interface WatchlistItem {
+  id: number;
+  symbol: string;
+  nameEn: string;
+  nameZh: string;
+  assetType: string;
+  issuer: string;
+  currency: string;
+  region: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+  currentPrice: number | null;
+  changeAmount: number | null;
+  changePercent: number | null;
+  priceAsOf: string | null;
+  priceProvider: string | null;
+  priceStatus: "cached" | "missing";
+}
+
+export type TransactionType = "BUY" | "SELL";
+
+export interface TransactionRecord {
+  id: number;
+  symbol: string;
+  transactionType: TransactionType;
+  quantity: number;
+  price: number;
+  fee: number;
+  tradeDate: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ManualAssetWithMetrics extends ManualAsset, PositionMetrics {
   priceAsOf: string;
+  priceProvider: string;
+  priceStatus: "cached";
 }
 
 export interface AllocationBucket {
@@ -114,11 +154,28 @@ export interface PortfolioResponse {
 
 export interface HoldingsResponse {
   holdings: HoldingWithMetrics[];
+  watchlist: WatchlistItem[];
   manualAssets: ManualAssetWithMetrics[];
+  transactions: TransactionRecord[];
   refreshStatus: RefreshStatus;
   lastRefreshAt: string | null;
   lastRefreshProvider: string | null;
   lastRefreshError: string | null;
+}
+
+export interface InstrumentSearchResult {
+  symbol: string;
+  nameEn: string;
+  nameZh: string;
+  assetType: string;
+  issuer: string;
+  currency: string;
+  region: string;
+  isActive: boolean;
+}
+
+export interface InstrumentDetail extends InstrumentSearchResult {
+  searchKeywords: string;
 }
 
 export interface DividendSummary {
@@ -144,6 +201,7 @@ export interface SettingsResponse {
   lastRefreshAt: string | null;
   lastRefreshProvider: string | null;
   lastRefreshError: string | null;
+  enableHkexBackup: boolean;
   enableDemoMode: boolean;
   allowDemoFallback: boolean;
 }
@@ -156,6 +214,7 @@ export interface QuoteData {
   currency: string;
   asOf: string;
   provider: string;
+  status: "success";
 }
 
 export interface QuoteError {
@@ -170,6 +229,11 @@ export interface RefreshResponse {
   failedSymbols: Array<{
     symbol: string;
     message: string;
+  }>;
+  symbolProviders: Array<{
+    symbol: string;
+    provider: string;
+    quoteTime: string;
   }>;
   message: string;
   provider: string;
