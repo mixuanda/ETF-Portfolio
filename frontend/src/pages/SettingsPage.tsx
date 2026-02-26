@@ -34,6 +34,8 @@ export function SettingsPage(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [syncingInstruments, setSyncingInstruments] = useState(false);
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -51,6 +53,29 @@ export function SettingsPage(): JSX.Element {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  async function handleSyncInstruments(): Promise<void> {
+    try {
+      setError(null);
+      setSyncNotice(null);
+      setSyncingInstruments(true);
+
+      const result = await api.syncInstruments();
+      await loadData();
+
+      if (result.failedSymbols.length > 0) {
+        setSyncNotice(
+          `Synced ${result.updatedSymbols.length} symbol(s), ${result.failedSymbols.length} symbol(s) failed.`
+        );
+      } else {
+        setSyncNotice(`Synced ${result.updatedSymbols.length} symbol(s) from HKEX metadata.`);
+      }
+    } catch (syncError) {
+      setError(syncError instanceof Error ? syncError.message : "Unable to sync instrument metadata");
+    } finally {
+      setSyncingInstruments(false);
+    }
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -217,6 +242,17 @@ export function SettingsPage(): JSX.Element {
         <p className="muted">
           Add/edit symbols in the Holdings page. Refresh uses this list for quote fetching.
         </p>
+        <div className="row-actions">
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => void handleSyncInstruments()}
+            disabled={syncingInstruments}
+          >
+            {syncingInstruments ? "Syncing metadata..." : "Sync names with HKEX"}
+          </button>
+        </div>
+        {syncNotice ? <p className="muted">{syncNotice}</p> : null}
         {data.trackedSymbols.length === 0 ? (
           <p className="muted">No symbols configured.</p>
         ) : (

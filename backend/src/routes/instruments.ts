@@ -1,5 +1,7 @@
 import { Router } from "express";
+import { config } from "../config.js";
 import { getInstrumentBySymbol, searchInstruments } from "../services/instrumentService.js";
+import { syncTrackedInstrumentMetadata } from "../services/instrumentMetadataSyncService.js";
 
 const router = Router();
 
@@ -24,6 +26,15 @@ router.get("/instruments/:symbol", (req, res) => {
   }
 
   res.json({ instrument });
+});
+
+router.post("/instruments/sync", async (_req, res, next) => {
+  try {
+    const result = await syncTrackedInstrumentMetadata(config.requestTimeoutMs);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
 });
 
 export default router;

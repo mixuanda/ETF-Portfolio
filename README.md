@@ -143,8 +143,10 @@ The refresh flow is manual and cache-preserving.
 4. Backend fetches delayed quotes from Yahoo first.
 5. If Yahoo fails for a symbol and HKEX backup is enabled, backend retries that
    symbol via HKEX delayed quote endpoint.
-6. On success, only successful real quotes are persisted.
-7. On failure, existing cached snapshots remain unchanged.
+6. During refresh, tracked symbol metadata (name/issuer) is also synced from
+   HKEX to keep symbol-name mapping aligned with public market data.
+7. On success, only successful real quotes are persisted.
+8. On failure, existing cached snapshots remain unchanged.
 
 Refresh status is shown as `idle`, `refreshing`, `success`,
 `partial_success`, or `failed`.
@@ -230,6 +232,7 @@ Core endpoints:
 - `GET /api/dividends`
 - `GET /api/instruments/search?q=...`
 - `GET /api/instruments/:symbol`
+- `POST /api/instruments/sync`
 - `GET /api/watchlist`
 - `POST /api/watchlist`
 - `DELETE /api/watchlist/:id`
@@ -250,3 +253,7 @@ Additional UI endpoints:
 - `DELETE /api/dividends/:id`
 - `GET /api/settings`
 - `PATCH /api/settings`
+
+`POST /api/instruments/sync` checks active catalog/tracked symbols against HKEX
+public metadata, updates `name_en`/`name_zh`/issuer/currency, and marks invalid
+symbols inactive if HKEX reports invalid input.

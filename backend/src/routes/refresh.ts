@@ -3,6 +3,7 @@ import type { RefreshResponse } from "@portfolio/shared";
 import { config } from "../config.js";
 import { listTrackedSymbols, saveQuoteSnapshots } from "../services/portfolioService.js";
 import { getSettings, setRefreshState } from "../services/settingsService.js";
+import { syncInstrumentMetadata } from "../services/instrumentMetadataSyncService.js";
 import { createQuoteService } from "../services/quotes/createQuoteService.js";
 
 const router = Router();
@@ -33,6 +34,20 @@ router.post("/refresh", async (_req, res, next) => {
     }
 
     const settings = getSettings();
+
+    try {
+      await syncInstrumentMetadata({
+        symbols,
+        timeoutMs: settings.refreshTimeoutMs
+      });
+    } catch (syncError) {
+      console.warn(
+        `[refresh] instrument metadata sync skipped: ${
+          syncError instanceof Error ? syncError.message : "unknown error"
+        }`
+      );
+    }
+
     const quoteService = createQuoteService({
       provider: settings.quoteProvider,
       timeoutMs: settings.refreshTimeoutMs,

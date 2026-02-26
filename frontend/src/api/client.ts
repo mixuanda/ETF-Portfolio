@@ -124,6 +124,15 @@ export const api = {
   getInstrument: (symbol: string) =>
     request<{ instrument: InstrumentDetail }>(`/api/instruments/${encodeURIComponent(symbol)}`),
 
+  syncInstruments: () =>
+    request<{
+      syncedAt: string;
+      updatedSymbols: string[];
+      failedSymbols: Array<{ symbol: string; message: string }>;
+    }>("/api/instruments/sync", {
+      method: "POST"
+    }),
+
   createHolding: (body: HoldingInput) =>
     request<HoldingWithMetrics>("/api/holdings", {
       method: "POST",
