@@ -7,6 +7,10 @@ function resolveDbPath(rawPath?: string): string {
     return path.resolve(process.cwd(), rawPath);
   }
 
+  if (process.env.VERCEL === "1") {
+    return "/tmp/portfolio.db";
+  }
+
   const fromWorkspaceRoot = path.resolve(process.cwd(), "database", "portfolio.db");
   const fromBackendDir = path.resolve(process.cwd(), "..", "database", "portfolio.db");
 

@@ -55,6 +55,25 @@ Follow these steps to run locally.
 
 Backend runs on `http://localhost:4000`.
 
+## Deploy on Vercel
+
+This repository includes `vercel.json` and an API bridge at `api/index.ts`, so
+you can deploy frontend and backend in one Vercel project.
+
+1. Connect `mixuanda/ETF-Portfolio` in Vercel.
+2. Keep project root at repository root.
+3. Set these environment variables in Vercel project settings:
+   - `DEFAULT_QUOTE_PROVIDER=yahoo`
+   - `ENABLE_DEMO_MODE=false`
+   - `ALLOW_DEMO_FALLBACK=false`
+4. Deploy to Production.
+
+Important Vercel persistence note:
+
+- On Vercel serverless runtime, SQLite uses `/tmp/portfolio.db` by default.
+- `/tmp` is ephemeral, so data can reset between cold starts or deployments.
+- For durable hosted usage, move storage to a persistent managed database.
+
 ## Scripts
 
 Use these scripts from the repository root.

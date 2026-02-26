@@ -6,3 +6,4 @@ database/portfolio.db-shm
 database/portfolio.db-wal
 frontend/.vite/
 .DS_Store
+.vercel/
