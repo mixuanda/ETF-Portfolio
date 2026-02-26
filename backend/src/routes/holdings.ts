@@ -17,7 +17,7 @@ router.get("/holdings", (_req, res) => {
 
 router.post("/holdings", (req, res) => {
   try {
-    const payload = createHoldingSchema.parse(req.body);
+    const payload = createHoldingSchema.parse(req.body) as Parameters<typeof createHolding>[0];
     const holding = createHolding(payload);
     res.status(201).json(holding);
   } catch (error) {

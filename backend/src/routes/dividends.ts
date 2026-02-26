@@ -17,7 +17,7 @@ router.get("/dividends", (_req, res) => {
 
 router.post("/dividends", (req, res) => {
   try {
-    const payload = createDividendSchema.parse(req.body);
+    const payload = createDividendSchema.parse(req.body) as Parameters<typeof createDividend>[0];
     const created = createDividend({
       ...payload,
       exDividendDate: payload.exDividendDate ?? null

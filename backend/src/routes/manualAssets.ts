@@ -17,7 +17,7 @@ router.get("/manual-assets", (_req, res) => {
 
 router.post("/manual-assets", (req, res) => {
   try {
-    const payload = createManualAssetSchema.parse(req.body);
+    const payload = createManualAssetSchema.parse(req.body) as Parameters<typeof createManualAsset>[0];
     const created = createManualAsset(payload);
     res.status(201).json(created);
   } catch (error) {
