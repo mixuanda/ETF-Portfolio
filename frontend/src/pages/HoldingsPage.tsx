@@ -49,6 +49,11 @@ interface TransactionFormState {
   notes: string;
 }
 
+interface HoldingEditFormState {
+  quantity: string;
+  averageCost: string;
+}
+
 const defaultManualAssetForm: ManualAssetFormState = {
   code: "",
   name: "",
@@ -79,6 +84,11 @@ const defaultTransactionForm: TransactionFormState = {
   fee: "0",
   tradeDate: "",
   notes: ""
+};
+
+const defaultHoldingEditForm: HoldingEditFormState = {
+  quantity: "",
+  averageCost: ""
 };
 
 function toTags(value: string): string[] {
@@ -114,6 +124,9 @@ export function HoldingsPage(): JSX.Element {
   const [watchlistNote, setWatchlistNote] = useState("");
   const [firstBuyForm, setFirstBuyForm] = useState<FirstBuyFormState>(defaultFirstBuyForm);
   const [transactionForm, setTransactionForm] = useState<TransactionFormState>(defaultTransactionForm);
+  const [holdingEditForm, setHoldingEditForm] = useState<HoldingEditFormState>(defaultHoldingEditForm);
+  const [editingHoldingId, setEditingHoldingId] = useState<number | null>(null);
+  const [editingHoldingSymbol, setEditingHoldingSymbol] = useState("");
 
   const [manualForm, setManualForm] = useState<ManualAssetFormState>(defaultManualAssetForm);
   const [editingManualId, setEditingManualId] = useState<number | null>(null);
@@ -310,6 +323,23 @@ export function HoldingsPage(): JSX.Element {
     setSuccessMessage(null);
   }
 
+  function openHoldingEditForm(input: { id: number; symbol: string; quantity: number; averageCost: number }): void {
+    setEditingHoldingId(input.id);
+    setEditingHoldingSymbol(input.symbol);
+    setHoldingEditForm({
+      quantity: String(input.quantity),
+      averageCost: String(input.averageCost)
+    });
+    setFormError(null);
+    setSuccessMessage(null);
+  }
+
+  function resetHoldingEditForm(): void {
+    setEditingHoldingId(null);
+    setEditingHoldingSymbol("");
+    setHoldingEditForm(defaultHoldingEditForm);
+  }
+
   async function handleTransactionSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     setFormError(null);
@@ -359,6 +389,41 @@ export function HoldingsPage(): JSX.Element {
       setFormError(
         submitError instanceof Error ? submitError.message : t("holdings.error.createTransaction")
       );
+    }
+  }
+
+  async function handleHoldingEditSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!editingHoldingId) {
+      return;
+    }
+
+    setFormError(null);
+    setSuccessMessage(null);
+
+    const quantity = Number(holdingEditForm.quantity);
+    const averageCost = Number(holdingEditForm.averageCost);
+
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setFormError(t("holdings.error.editQuantityPositive"));
+      return;
+    }
+
+    if (!Number.isFinite(averageCost) || averageCost < 0) {
+      setFormError(t("holdings.error.editAvgCostInvalid"));
+      return;
+    }
+
+    try {
+      await api.updateHolding(editingHoldingId, {
+        quantity,
+        averageCost
+      });
+      setSuccessMessage(t("holdings.success.holdingUpdated", { symbol: editingHoldingSymbol }));
+      resetHoldingEditForm();
+      await loadData();
+    } catch (submitError) {
+      setFormError(submitError instanceof Error ? submitError.message : t("holdings.error.updateHolding"));
     }
   }
 
@@ -813,6 +878,20 @@ export function HoldingsPage(): JSX.Element {
                     <div className="row-actions">
                       <button
                         type="button"
+                        className="btn btn--ghost"
+                        onClick={() =>
+                          openHoldingEditForm({
+                            id: holding.id,
+                            symbol: holding.symbol,
+                            quantity: holding.quantity,
+                            averageCost: holding.averageCost
+                          })
+                        }
+                      >
+                        {t("holdings.editHolding")}
+                      </button>
+                      <button
+                        type="button"
                         className="btn btn--primary"
                         onClick={() =>
                           openTransactionForm({
@@ -841,6 +920,52 @@ export function HoldingsPage(): JSX.Element {
 
         {data.holdings.length === 0 ? (
           <p className="muted">{t("holdings.noPurchased")}</p>
+        ) : null}
+
+        {editingHoldingId ? (
+          <form className="data-form" onSubmit={(event) => void handleHoldingEditSubmit(event)}>
+            <h4>{t("holdings.editHoldingFor", { symbol: editingHoldingSymbol })}</h4>
+            <div className="form-grid">
+              <label>
+                {t("holdings.quantity")}
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  required
+                  value={holdingEditForm.quantity}
+                  onChange={(event) =>
+                    setHoldingEditForm((prev) => ({ ...prev, quantity: event.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                {t("holdings.averageCost")}
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  required
+                  value={holdingEditForm.averageCost}
+                  onChange={(event) =>
+                    setHoldingEditForm((prev) => ({ ...prev, averageCost: event.target.value }))
+                  }
+                />
+              </label>
+            </div>
+            <div className="row-actions">
+              <button type="submit" className="btn btn--primary">
+                {t("holdings.updateHolding")}
+              </button>
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={resetHoldingEditForm}
+              >
+                {t("holdings.cancelEdit")}
+              </button>
+            </div>
+          </form>
         ) : null}
 
         {transactionForm.symbol ? (
