@@ -3,6 +3,7 @@ import type {
   HoldingsResponse,
   InstrumentSearchResult,
   RefreshStatus,
+  TransactionFeeMode,
   TransactionType
 } from "@portfolio/shared";
 import { api } from "../api/client";
@@ -35,6 +36,8 @@ interface ManualAssetFormState {
 interface FirstBuyFormState {
   quantity: string;
   price: string;
+  feeMode: TransactionFeeMode;
+  fee: string;
   tradeDate: string;
   notes: string;
 }
@@ -42,6 +45,7 @@ interface FirstBuyFormState {
 interface TransactionFormState {
   symbol: string;
   transactionType: TransactionType;
+  feeMode: TransactionFeeMode;
   quantity: string;
   price: string;
   fee: string;
@@ -72,6 +76,8 @@ const defaultManualAssetForm: ManualAssetFormState = {
 const defaultFirstBuyForm: FirstBuyFormState = {
   quantity: "",
   price: "",
+  feeMode: "manual",
+  fee: "0",
   tradeDate: "",
   notes: ""
 };
@@ -79,6 +85,7 @@ const defaultFirstBuyForm: FirstBuyFormState = {
 const defaultTransactionForm: TransactionFormState = {
   symbol: "",
   transactionType: "BUY",
+  feeMode: "manual",
   quantity: "",
   price: "",
   fee: "0",
@@ -104,6 +111,30 @@ function toTagInput(tags: string[]): string {
 
 function instrumentDisplayName(item: InstrumentSearchResult): string {
   return item.nameZh ? `${item.nameEn} / ${item.nameZh}` : item.nameEn;
+}
+
+function roundMoney(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  return Math.round(value * 100) / 100;
+}
+
+function calculateAutoTrade25FeePreview(quantity: number, price: number): number {
+  if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(price) || price < 0) {
+    return 0;
+  }
+
+  const amount = quantity * price;
+  if (amount <= 0) {
+    return 0;
+  }
+
+  const brokerage = 25;
+  const stampDuty = Math.ceil(amount * 0.001);
+  const transactionLevy = roundMoney(amount * 0.0000285);
+  const tradingFee = roundMoney(amount * 0.0000565);
+  return roundMoney(brokerage + stampDuty + transactionLevy + tradingFee);
 }
 
 export function HoldingsPage(): JSX.Element {
@@ -213,8 +244,26 @@ export function HoldingsPage(): JSX.Element {
     };
   }, [data]);
 
+  const autoFeePreview = useMemo(() => {
+    const quantity = Number(transactionForm.quantity);
+    const price = Number(transactionForm.price);
+    return calculateAutoTrade25FeePreview(quantity, price);
+  }, [transactionForm.price, transactionForm.quantity]);
+
+  const firstBuyAutoFeePreview = useMemo(() => {
+    const quantity = Number(firstBuyForm.quantity);
+    const price = Number(firstBuyForm.price);
+    return calculateAutoTrade25FeePreview(quantity, price);
+  }, [firstBuyForm.price, firstBuyForm.quantity]);
+
   function transactionTypeLabel(value: TransactionType): string {
     return value === "SELL" ? t("holdings.transaction.sell") : t("holdings.transaction.buy");
+  }
+
+  function transactionFeeModeLabel(value: TransactionFeeMode): string {
+    return value === "auto_hsbc_trade25"
+      ? t("holdings.feeMode.autoTrade25")
+      : t("holdings.feeMode.manual");
   }
 
   function clearSelection(): void {
@@ -272,6 +321,7 @@ export function HoldingsPage(): JSX.Element {
 
     const quantity = Number(firstBuyForm.quantity);
     const price = Number(firstBuyForm.price);
+    const fee = Number(firstBuyForm.fee || "0");
 
     if (!Number.isFinite(quantity) || quantity <= 0) {
       setFormError(t("holdings.error.quantityPositive"));
@@ -281,6 +331,10 @@ export function HoldingsPage(): JSX.Element {
       setFormError(t("holdings.error.buyPriceInvalid"));
       return;
     }
+    if (firstBuyForm.feeMode === "manual" && (!Number.isFinite(fee) || fee < 0)) {
+      setFormError(t("holdings.error.feeInvalid"));
+      return;
+    }
 
     try {
       await api.createTransaction({
@@ -288,7 +342,8 @@ export function HoldingsPage(): JSX.Element {
         transactionType: "BUY",
         quantity,
         price,
-        fee: 0,
+        feeMode: firstBuyForm.feeMode,
+        fee: firstBuyForm.feeMode === "manual" ? fee : 0,
         tradeDate: firstBuyForm.tradeDate || null,
         notes: firstBuyForm.notes.trim()
       });
@@ -313,6 +368,7 @@ export function HoldingsPage(): JSX.Element {
     setTransactionForm({
       symbol: input.symbol,
       transactionType: input.type ?? "BUY",
+      feeMode: "manual",
       quantity: "",
       price: input.priceHint != null ? String(input.priceHint) : "",
       fee: "0",
@@ -361,7 +417,7 @@ export function HoldingsPage(): JSX.Element {
       setFormError(t("holdings.error.priceInvalid"));
       return;
     }
-    if (!Number.isFinite(fee) || fee < 0) {
+    if (transactionForm.feeMode === "manual" && (!Number.isFinite(fee) || fee < 0)) {
       setFormError(t("holdings.error.feeInvalid"));
       return;
     }
@@ -372,7 +428,8 @@ export function HoldingsPage(): JSX.Element {
         transactionType: transactionForm.transactionType,
         quantity,
         price,
-        fee,
+        feeMode: transactionForm.feeMode,
+        fee: transactionForm.feeMode === "manual" ? fee : 0,
         tradeDate: transactionForm.tradeDate || null,
         notes: transactionForm.notes.trim()
       });
@@ -730,6 +787,34 @@ export function HoldingsPage(): JSX.Element {
                 />
               </label>
               <label>
+                {t("holdings.feeMode")}
+                <select
+                  value={firstBuyForm.feeMode}
+                  onChange={(event) =>
+                    setFirstBuyForm((prev) => ({
+                      ...prev,
+                      feeMode: event.target.value as TransactionFeeMode
+                    }))
+                  }
+                >
+                  <option value="manual">{t("holdings.feeMode.manual")}</option>
+                  <option value="auto_hsbc_trade25">{t("holdings.feeMode.autoTrade25")}</option>
+                </select>
+              </label>
+              <label>
+                {t("holdings.fee")}
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={firstBuyForm.feeMode === "manual" ? firstBuyForm.fee : String(firstBuyAutoFeePreview)}
+                  disabled={firstBuyForm.feeMode !== "manual"}
+                  onChange={(event) =>
+                    setFirstBuyForm((prev) => ({ ...prev, fee: event.target.value }))
+                  }
+                />
+              </label>
+              <label>
                 {t("holdings.tradeDateOptional")}
                 <input
                   type="date"
@@ -750,6 +835,11 @@ export function HoldingsPage(): JSX.Element {
                 />
               </label>
             </div>
+            {firstBuyForm.feeMode === "auto_hsbc_trade25" ? (
+              <p className="muted">
+                {t("holdings.feeMode.autoPreview", { value: formatCurrency(firstBuyAutoFeePreview) })}
+              </p>
+            ) : null}
             <div className="row-actions">
               <button type="submit" className="btn btn--primary">
                 {t("holdings.savePurchased")}
@@ -922,6 +1012,72 @@ export function HoldingsPage(): JSX.Element {
           <p className="muted">{t("holdings.noPurchased")}</p>
         ) : null}
 
+        <div className="summary-list-wrap">
+          <h4>{t("holdings.costSummary.title")}</h4>
+          <ul className="summary-list">
+            <li>
+              <span>{t("holdings.costSummary.currentCostBasis")}</span>
+              <strong>{formatCurrency(data.costSummary.currentCostBasis)}</strong>
+            </li>
+            <li>
+              <span>{t("holdings.costSummary.currentMarketValue")}</span>
+              <strong>{formatCurrency(data.costSummary.currentMarketValue)}</strong>
+            </li>
+            <li>
+              <span>{t("holdings.costSummary.currentUnrealized")}</span>
+              <strong className={`tone-${numberTone(data.costSummary.currentUnrealizedPL)}`}>
+                {formatSignedCurrency(data.costSummary.currentUnrealizedPL)}
+              </strong>
+            </li>
+            <li>
+              <span>{t("holdings.costSummary.totalBuy")}</span>
+              <strong>{formatCurrency(data.costSummary.cumulativeBuyAmount)}</strong>
+            </li>
+            <li>
+              <span>{t("holdings.costSummary.totalSell")}</span>
+              <strong>{formatCurrency(data.costSummary.cumulativeSellAmount)}</strong>
+            </li>
+            <li>
+              <span>{t("holdings.costSummary.totalDividends")}</span>
+              <strong>{formatCurrency(data.costSummary.cumulativeDividends)}</strong>
+            </li>
+            <li>
+              <span>{t("holdings.costSummary.brokerageFees")}</span>
+              <strong>{formatCurrency(data.costSummary.brokerageFees)}</strong>
+            </li>
+            <li>
+              <span>{t("holdings.costSummary.stampDuty")}</span>
+              <strong>{formatCurrency(data.costSummary.stampDuty)}</strong>
+            </li>
+            <li>
+              <span>{t("holdings.costSummary.transactionLevy")}</span>
+              <strong>{formatCurrency(data.costSummary.transactionLevy)}</strong>
+            </li>
+            <li>
+              <span>{t("holdings.costSummary.tradingFees")}</span>
+              <strong>{formatCurrency(data.costSummary.tradingFees)}</strong>
+            </li>
+            <li>
+              <span>{t("holdings.costSummary.otherFees")}</span>
+              <strong>{formatCurrency(data.costSummary.otherFees)}</strong>
+            </li>
+            <li>
+              <span>{t("holdings.costSummary.totalFees")}</span>
+              <strong>{formatCurrency(data.costSummary.totalFees)}</strong>
+            </li>
+            <li>
+              <span>{t("holdings.costSummary.netInvested")}</span>
+              <strong>{formatCurrency(data.costSummary.netInvested)}</strong>
+            </li>
+            <li>
+              <span>{t("holdings.costSummary.totalReturn")}</span>
+              <strong className={`tone-${numberTone(data.costSummary.totalReturn)}`}>
+                {formatSignedCurrency(data.costSummary.totalReturn)}
+              </strong>
+            </li>
+          </ul>
+        </div>
+
         {editingHoldingId ? (
           <form className="data-form" onSubmit={(event) => void handleHoldingEditSubmit(event)}>
             <h4>{t("holdings.editHoldingFor", { symbol: editingHoldingSymbol })}</h4>
@@ -988,6 +1144,21 @@ export function HoldingsPage(): JSX.Element {
                 </select>
               </label>
               <label>
+                {t("holdings.feeMode")}
+                <select
+                  value={transactionForm.feeMode}
+                  onChange={(event) =>
+                    setTransactionForm((prev) => ({
+                      ...prev,
+                      feeMode: event.target.value as TransactionFeeMode
+                    }))
+                  }
+                >
+                  <option value="manual">{t("holdings.feeMode.manual")}</option>
+                  <option value="auto_hsbc_trade25">{t("holdings.feeMode.autoTrade25")}</option>
+                </select>
+              </label>
+              <label>
                 {t("holdings.quantity")}
                 <input
                   type="number"
@@ -1019,7 +1190,8 @@ export function HoldingsPage(): JSX.Element {
                   type="number"
                   min="0"
                   step="any"
-                  value={transactionForm.fee}
+                  value={transactionForm.feeMode === "manual" ? transactionForm.fee : String(autoFeePreview)}
+                  disabled={transactionForm.feeMode !== "manual"}
                   onChange={(event) =>
                     setTransactionForm((prev) => ({ ...prev, fee: event.target.value }))
                   }
@@ -1046,6 +1218,11 @@ export function HoldingsPage(): JSX.Element {
                 />
               </label>
             </div>
+            {transactionForm.feeMode === "auto_hsbc_trade25" ? (
+              <p className="muted">
+                {t("holdings.feeMode.autoPreview", { value: formatCurrency(autoFeePreview) })}
+              </p>
+            ) : null}
             <div className="row-actions">
               <button type="submit" className="btn btn--primary">
                 {t("holdings.saveTransaction")}
@@ -1070,6 +1247,11 @@ export function HoldingsPage(): JSX.Element {
                 <th>{t("holdings.table.type")}</th>
                 <th>{t("holdings.table.quantity")}</th>
                 <th>{t("holdings.table.price")}</th>
+                <th>{t("holdings.table.feeMode")}</th>
+                <th>{t("holdings.table.brokerageFee")}</th>
+                <th>{t("holdings.table.stampDuty")}</th>
+                <th>{t("holdings.table.transactionLevy")}</th>
+                <th>{t("holdings.table.tradingFee")}</th>
                 <th>{t("holdings.table.fee")}</th>
                 <th>{t("holdings.table.notes")}</th>
               </tr>
@@ -1082,6 +1264,11 @@ export function HoldingsPage(): JSX.Element {
                   <td>{transactionTypeLabel(transaction.transactionType)}</td>
                   <td>{transaction.quantity}</td>
                   <td>{formatCurrency(transaction.price)}</td>
+                  <td>{transactionFeeModeLabel(transaction.feeMode)}</td>
+                  <td>{formatCurrency(transaction.brokerageFee)}</td>
+                  <td>{formatCurrency(transaction.stampDuty)}</td>
+                  <td>{formatCurrency(transaction.transactionLevy)}</td>
+                  <td>{formatCurrency(transaction.tradingFee)}</td>
                   <td>{formatCurrency(transaction.fee)}</td>
                   <td>{transaction.notes || "-"}</td>
                 </tr>

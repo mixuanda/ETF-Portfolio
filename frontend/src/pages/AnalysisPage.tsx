@@ -71,6 +71,10 @@ export function AnalysisPage(): JSX.Element {
             {formatSignedCurrency(data.summary.totalReturn)}
           </p>
         </article>
+        <article className="stat-card">
+          <p className="stat-card__label">{t("analysis.stat.totalFees")}</p>
+          <p className="stat-card__value">{formatCurrency(data.summary.totalFees)}</p>
+        </article>
       </section>
 
       <div className="two-col">

@@ -55,6 +55,7 @@ export interface DividendRecord {
   symbol: string;
   exDividendDate: string | null;
   paymentDate: string;
+  eventLabel: string;
   dividendPerUnit: number;
   receivedAmount: number;
   currency: string;
@@ -100,6 +101,8 @@ export interface WatchlistItem {
 
 export type TransactionType = "BUY" | "SELL";
 
+export type TransactionFeeMode = "manual" | "auto_hsbc_trade25";
+
 export interface TransactionRecord {
   id: number;
   symbol: string;
@@ -107,10 +110,32 @@ export interface TransactionRecord {
   quantity: number;
   price: number;
   fee: number;
+  feeMode: TransactionFeeMode;
+  brokerageFee: number;
+  stampDuty: number;
+  transactionLevy: number;
+  tradingFee: number;
   tradeDate: string;
   notes: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PurchasedCostSummary {
+  currentCostBasis: number;
+  currentMarketValue: number;
+  currentUnrealizedPL: number;
+  cumulativeBuyAmount: number;
+  cumulativeSellAmount: number;
+  cumulativeDividends: number;
+  brokerageFees: number;
+  stampDuty: number;
+  transactionLevy: number;
+  tradingFees: number;
+  otherFees: number;
+  totalFees: number;
+  netInvested: number;
+  totalReturn: number;
 }
 
 export interface ManualAssetWithMetrics extends ManualAsset, PositionMetrics {
@@ -131,7 +156,10 @@ export interface PortfolioSummary {
   totalUnrealizedPL: number;
   totalUnrealizedReturnPct: number;
   totalDividends: number;
+  totalFees: number;
+  realizedPL: number;
   totalReturn: number;
+  totalReturnPct: number;
   todayApproxChange: number;
   todayReturnPct: number;
   holdingsCount: number;
@@ -158,6 +186,7 @@ export interface HoldingsResponse {
   watchlist: WatchlistItem[];
   manualAssets: ManualAssetWithMetrics[];
   transactions: TransactionRecord[];
+  costSummary: PurchasedCostSummary;
   refreshStatus: RefreshStatus;
   lastRefreshAt: string | null;
   lastRefreshProvider: string | null;
@@ -181,6 +210,7 @@ export interface InstrumentDetail extends InstrumentSearchResult {
 
 export interface DividendSummary {
   totalReceived: number;
+  yieldPct: number;
   byAsset: Array<{
     symbol: string;
     totalReceived: number;

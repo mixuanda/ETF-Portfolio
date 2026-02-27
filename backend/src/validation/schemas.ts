@@ -72,8 +72,9 @@ export const updateManualAssetSchema = createManualAssetSchema.partial();
 
 export const createDividendSchema = z.object({
   symbol: symbolSchema,
-  exDividendDate: dateSchema.optional().nullable(),
+  exDividendDate: dateSchema,
   paymentDate: dateSchema,
+  eventLabel: z.string().trim().max(120).optional().default(""),
   dividendPerUnit: z.number().finite().nonnegative(),
   receivedAmount: z.number().finite().nonnegative(),
   currency: currencySchema.default("HKD"),
@@ -92,6 +93,7 @@ export const createTransactionSchema = z.object({
   transactionType: z.enum(["BUY", "SELL"]),
   quantity: z.number().finite().positive(),
   price: z.number().finite().nonnegative(),
+  feeMode: z.enum(["manual", "auto_hsbc_trade25"]).optional().default("manual"),
   fee: z.number().finite().nonnegative().optional().default(0),
   tradeDate: dateSchema.optional().nullable(),
   notes: optionalTextSchema

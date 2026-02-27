@@ -9,6 +9,7 @@ import type {
   PortfolioResponse,
   RefreshResponse,
   SettingsResponse,
+  TransactionFeeMode,
   TransactionRecord,
   WatchlistItem
 } from "@portfolio/shared";
@@ -73,8 +74,9 @@ export type ManualAssetUpdateInput = Partial<ManualAssetInput>;
 
 export interface DividendInput {
   symbol: string;
-  exDividendDate: string | null;
+  exDividendDate: string;
   paymentDate: string;
+  eventLabel?: string;
   dividendPerUnit: number;
   receivedAmount: number;
   currency: string;
@@ -93,6 +95,7 @@ export interface TransactionInput {
   transactionType: "BUY" | "SELL";
   quantity: number;
   price: number;
+  feeMode?: TransactionFeeMode;
   fee?: number;
   tradeDate?: string | null;
   notes: string;

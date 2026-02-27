@@ -1,7 +1,8 @@
-import type { TransactionRecord, TransactionType, WatchlistItem } from "@portfolio/shared";
+import { roundMoney, type TransactionFeeMode, type TransactionRecord, type TransactionType, type WatchlistItem } from "@portfolio/shared";
 import db from "../db/client.js";
 import { stringifyTags } from "../utils/parsers.js";
 import { getInstrumentBySymbol } from "./instrumentService.js";
+import { calculateHkTrade25Fees, normalizeManualFee, type TransactionFeeBreakdown } from "./tradeFeeService.js";
 
 type SnapshotRow = {
   symbol: string;
@@ -41,6 +42,11 @@ type TransactionRow = {
   quantity: number;
   price: number;
   fee: number;
+  fee_mode: TransactionFeeMode;
+  brokerage_fee: number;
+  stamp_duty: number;
+  transaction_levy: number;
+  trading_fee: number;
   trade_date: string;
   notes: string;
   created_at: string;
@@ -63,11 +69,29 @@ function mapTransaction(row: TransactionRow): TransactionRecord {
     quantity: row.quantity,
     price: row.price,
     fee: row.fee,
+    feeMode: row.fee_mode,
+    brokerageFee: row.brokerage_fee,
+    stampDuty: row.stamp_duty,
+    transactionLevy: row.transaction_levy,
+    tradingFee: row.trading_fee,
     tradeDate: row.trade_date,
     notes: row.notes,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
+}
+
+function resolveTransactionFees(input: {
+  feeMode: TransactionFeeMode;
+  quantity: number;
+  price: number;
+  fee: number;
+}): TransactionFeeBreakdown {
+  if (input.feeMode === "auto_hsbc_trade25") {
+    return calculateHkTrade25Fees(roundMoney(input.quantity * input.price));
+  }
+
+  return normalizeManualFee(input.fee);
 }
 
 function getLatestSnapshots(symbols: string[]): Map<string, SnapshotRow> {
@@ -304,6 +328,7 @@ export function createTransaction(input: {
   quantity: number;
   price: number;
   fee: number;
+  feeMode?: TransactionFeeMode;
   tradeDate: string | null;
   notes: string;
 }): TransactionRecord {
@@ -320,6 +345,7 @@ export function createTransaction(input: {
   const quantity = input.quantity;
   const price = input.price;
   const fee = input.fee;
+  const feeMode = input.feeMode ?? "manual";
 
   if (!Number.isFinite(quantity) || quantity <= 0) {
     throw new Error("Quantity must be a valid number greater than zero.");
@@ -330,6 +356,13 @@ export function createTransaction(input: {
   if (!Number.isFinite(fee) || fee < 0) {
     throw new Error("Fee must be a valid non-negative number.");
   }
+
+  const feeBreakdown = resolveTransactionFees({
+    feeMode,
+    quantity,
+    price,
+    fee
+  });
 
   const tradeDate = (input.tradeDate ?? "").trim() || todayDateString();
   const notes = input.notes.trim();
@@ -342,6 +375,11 @@ export function createTransaction(input: {
         quantity,
         price,
         fee,
+        fee_mode,
+        brokerage_fee,
+        stamp_duty,
+        transaction_levy,
+        trading_fee,
         trade_date,
         notes,
         updated_at
@@ -351,6 +389,11 @@ export function createTransaction(input: {
         @quantity,
         @price,
         @fee,
+        @feeMode,
+        @brokerageFee,
+        @stampDuty,
+        @transactionLevy,
+        @tradingFee,
         @tradeDate,
         @notes,
         CURRENT_TIMESTAMP
@@ -368,7 +411,7 @@ export function createTransaction(input: {
       const nextAverageCost =
         nextQuantity === 0
           ? 0
-          : (previousAverageCost * previousQuantity + price * quantity + fee) / nextQuantity;
+          : (previousAverageCost * previousQuantity + price * quantity + feeBreakdown.fee) / nextQuantity;
 
       if (existingHolding) {
         db.prepare(
@@ -420,7 +463,7 @@ export function createTransaction(input: {
           name: instrument.nameEn,
           assetType: instrument.assetType,
           quantity,
-          averageCost: (price * quantity + fee) / quantity,
+          averageCost: (price * quantity + feeBreakdown.fee) / quantity,
           currency: instrument.currency,
           region: instrument.region,
           strategyLabel: inferStrategyLabel(instrument.assetType),
@@ -462,7 +505,12 @@ export function createTransaction(input: {
       transactionType: input.transactionType,
       quantity,
       price,
-      fee,
+      fee: feeBreakdown.fee,
+      feeMode: feeBreakdown.feeMode,
+      brokerageFee: feeBreakdown.brokerageFee,
+      stampDuty: feeBreakdown.stampDuty,
+      transactionLevy: feeBreakdown.transactionLevy,
+      tradingFee: feeBreakdown.tradingFee,
       tradeDate,
       notes
     });

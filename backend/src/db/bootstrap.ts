@@ -17,11 +17,40 @@ function runSqlFile(filePath: string): void {
 }
 
 function ensureSchemaCompatibility(): void {
-  const columns = db.prepare("PRAGMA table_info(asset_snapshots)").all() as Array<{ name: string }>;
-  const hasStatusColumn = columns.some((column) => column.name === "status");
+  const snapshotColumns = db.prepare("PRAGMA table_info(asset_snapshots)").all() as Array<{
+    name: string;
+  }>;
+  const hasStatusColumn = snapshotColumns.some((column) => column.name === "status");
 
   if (!hasStatusColumn) {
     db.exec("ALTER TABLE asset_snapshots ADD COLUMN status TEXT NOT NULL DEFAULT 'success'");
+  }
+
+  const transactionColumns = db.prepare("PRAGMA table_info(transactions)").all() as Array<{
+    name: string;
+  }>;
+
+  if (!transactionColumns.some((column) => column.name === "fee_mode")) {
+    db.exec(
+      "ALTER TABLE transactions ADD COLUMN fee_mode TEXT NOT NULL DEFAULT 'manual' CHECK (fee_mode IN ('manual', 'auto_hsbc_trade25'))"
+    );
+  }
+  if (!transactionColumns.some((column) => column.name === "brokerage_fee")) {
+    db.exec("ALTER TABLE transactions ADD COLUMN brokerage_fee REAL NOT NULL DEFAULT 0");
+  }
+  if (!transactionColumns.some((column) => column.name === "stamp_duty")) {
+    db.exec("ALTER TABLE transactions ADD COLUMN stamp_duty REAL NOT NULL DEFAULT 0");
+  }
+  if (!transactionColumns.some((column) => column.name === "transaction_levy")) {
+    db.exec("ALTER TABLE transactions ADD COLUMN transaction_levy REAL NOT NULL DEFAULT 0");
+  }
+  if (!transactionColumns.some((column) => column.name === "trading_fee")) {
+    db.exec("ALTER TABLE transactions ADD COLUMN trading_fee REAL NOT NULL DEFAULT 0");
+  }
+
+  const dividendColumns = db.prepare("PRAGMA table_info(dividends)").all() as Array<{ name: string }>;
+  if (!dividendColumns.some((column) => column.name === "event_label")) {
+    db.exec("ALTER TABLE dividends ADD COLUMN event_label TEXT NOT NULL DEFAULT ''");
   }
 }
 

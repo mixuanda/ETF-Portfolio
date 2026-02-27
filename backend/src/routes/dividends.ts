@@ -19,10 +19,7 @@ router.get("/dividends", (_req, res) => {
 router.post("/dividends", async (req, res) => {
   try {
     const payload = createDividendSchema.parse(req.body) as Parameters<typeof createDividend>[0];
-    const created = createDividend({
-      ...payload,
-      exDividendDate: payload.exDividendDate ?? null
-    });
+    const created = createDividend(payload);
     await syncFirebaseProgramSafely("create dividend");
     res.status(201).json(created);
   } catch (error) {

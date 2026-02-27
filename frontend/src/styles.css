@@ -498,6 +498,10 @@ select:focus {
   gap: 0.5rem;
 }
 
+.summary-list-wrap {
+  margin-top: 0.9rem;
+}
+
 .summary-list li {
   display: flex;
   justify-content: space-between;

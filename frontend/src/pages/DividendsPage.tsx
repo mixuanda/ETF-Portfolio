@@ -8,6 +8,7 @@ interface DividendFormState {
   symbol: string;
   exDividendDate: string;
   paymentDate: string;
+  eventLabel: string;
   dividendPerUnit: string;
   receivedAmount: string;
   currency: string;
@@ -18,6 +19,7 @@ const defaultForm: DividendFormState = {
   symbol: "",
   exDividendDate: "",
   paymentDate: "",
+  eventLabel: "",
   dividendPerUnit: "",
   receivedAmount: "",
   currency: "HKD",
@@ -50,6 +52,14 @@ export function DividendsPage(): JSX.Element {
   }, [loadData]);
 
   const topAssets = useMemo(() => data?.summary.byAsset.slice(0, 5) ?? [], [data]);
+  const eventOptions = useMemo(
+    () =>
+      [...new Set((data?.records ?? []).map((record) => record.eventLabel).filter((item) => item.trim()))].slice(
+        0,
+        20
+      ),
+    [data]
+  );
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -58,7 +68,7 @@ export function DividendsPage(): JSX.Element {
     const dividendPerUnit = Number(form.dividendPerUnit);
     const receivedAmount = Number(form.receivedAmount);
 
-    if (!form.symbol.trim() || !form.paymentDate.trim()) {
+    if (!form.symbol.trim() || !form.exDividendDate.trim() || !form.paymentDate.trim()) {
       setFormError(t("dividends.error.requiredFields"));
       return;
     }
@@ -75,8 +85,9 @@ export function DividendsPage(): JSX.Element {
 
     const payload = {
       symbol: form.symbol.trim().toUpperCase(),
-      exDividendDate: form.exDividendDate.trim() || null,
+      exDividendDate: form.exDividendDate.trim(),
       paymentDate: form.paymentDate.trim(),
+      eventLabel: form.eventLabel.trim(),
       dividendPerUnit,
       receivedAmount,
       currency: form.currency.trim().toUpperCase(),
@@ -133,6 +144,10 @@ export function DividendsPage(): JSX.Element {
           <p className="stat-card__label">{t("dividends.stat.records")}</p>
           <p className="stat-card__value">{data.records.length}</p>
         </article>
+        <article className="stat-card">
+          <p className="stat-card__label">{t("dividends.stat.yieldPct")}</p>
+          <p className="stat-card__value">{data.summary.yieldPct.toFixed(2)}%</p>
+        </article>
       </section>
 
       <section className="panel">
@@ -160,6 +175,7 @@ export function DividendsPage(): JSX.Element {
                 <th>{t("dividends.form.symbol")}</th>
                 <th>{t("dividends.form.exDate")}</th>
                 <th>{t("dividends.form.paymentDate")}</th>
+                <th>{t("dividends.form.eventLabel")}</th>
                 <th>{t("dividends.form.perUnit")}</th>
                 <th>{t("dividends.form.received")}</th>
                 <th>{t("dividends.table.currency")}</th>
@@ -173,6 +189,7 @@ export function DividendsPage(): JSX.Element {
                   <td>{record.symbol}</td>
                   <td>{record.exDividendDate ?? "-"}</td>
                   <td>{record.paymentDate}</td>
+                  <td>{record.eventLabel || "-"}</td>
                   <td>{formatCurrency(record.dividendPerUnit, record.currency)}</td>
                   <td>{formatCurrency(record.receivedAmount, record.currency)}</td>
                   <td>{record.currency}</td>
@@ -185,12 +202,13 @@ export function DividendsPage(): JSX.Element {
                         onClick={() => {
                           setEditingId(record.id);
                           setForm({
-                            symbol: record.symbol,
-                            exDividendDate: record.exDividendDate ?? "",
-                            paymentDate: record.paymentDate,
-                            dividendPerUnit: String(record.dividendPerUnit),
-                            receivedAmount: String(record.receivedAmount),
-                            currency: record.currency,
+                             symbol: record.symbol,
+                             exDividendDate: record.exDividendDate ?? "",
+                             paymentDate: record.paymentDate,
+                             eventLabel: record.eventLabel,
+                             dividendPerUnit: String(record.dividendPerUnit),
+                             receivedAmount: String(record.receivedAmount),
+                             currency: record.currency,
                             notes: record.notes
                           });
                         }}
@@ -234,6 +252,7 @@ export function DividendsPage(): JSX.Element {
                 onChange={(event) =>
                   setForm((prev) => ({ ...prev, exDividendDate: event.target.value }))
                 }
+                required
               />
             </label>
             <label>
@@ -244,6 +263,20 @@ export function DividendsPage(): JSX.Element {
                 onChange={(event) => setForm((prev) => ({ ...prev, paymentDate: event.target.value }))}
                 required
               />
+            </label>
+            <label>
+              {t("dividends.form.eventLabel")}
+              <input
+                list="dividend-event-options"
+                value={form.eventLabel}
+                onChange={(event) => setForm((prev) => ({ ...prev, eventLabel: event.target.value }))}
+                placeholder={t("dividends.form.eventPlaceholder")}
+              />
+              <datalist id="dividend-event-options">
+                {eventOptions.map((eventLabel) => (
+                  <option key={eventLabel} value={eventLabel} />
+                ))}
+              </datalist>
             </label>
             <label>
               {t("dividends.form.perUnit")}

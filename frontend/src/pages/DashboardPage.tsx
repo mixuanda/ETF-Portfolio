@@ -101,7 +101,10 @@ export function DashboardPage(): JSX.Element {
           label={t("dashboard.stat.totalReturn")}
           value={formatSignedCurrency(portfolio.summary.totalReturn)}
           tone={numberTone(portfolio.summary.totalReturn)}
-          helper={t("dashboard.helper.totalReturn")}
+          helper={t("dashboard.helper.totalReturn", {
+            pct: portfolio.summary.totalReturnPct.toFixed(2),
+            fees: formatCurrency(portfolio.summary.totalFees)
+          })}
         />
         <StatCard
           label={t("dashboard.stat.todayReturn")}

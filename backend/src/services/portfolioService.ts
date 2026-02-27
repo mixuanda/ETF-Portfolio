@@ -12,6 +12,7 @@ import {
   type HoldingsResponse,
   type ManualAsset,
   type ManualAssetWithMetrics,
+  type PurchasedCostSummary,
   type PortfolioResponse,
   type PortfolioSummary,
   type QuoteData,
@@ -80,6 +81,7 @@ type DividendRow = {
   symbol: string;
   ex_dividend_date: string | null;
   payment_date: string;
+  event_label: string;
   dividend_per_unit: number;
   received_amount: number;
   currency: string;
@@ -148,6 +150,7 @@ function mapDividendRow(row: DividendRow): DividendRecord {
     symbol: row.symbol,
     exDividendDate: row.ex_dividend_date,
     paymentDate: row.payment_date,
+    eventLabel: row.event_label,
     dividendPerUnit: row.dividend_per_unit,
     receivedAmount: row.received_amount,
     currency: row.currency,
@@ -212,6 +215,109 @@ function getManualAssetRows(): ManualAssetRow[] {
     .all() as ManualAssetRow[];
 }
 
+type TransactionTotals = {
+  buyAmount: number;
+  sellAmount: number;
+  totalFees: number;
+  brokerageFees: number;
+  stampDuty: number;
+  transactionLevy: number;
+  tradingFees: number;
+};
+
+function getTransactionTotals(): TransactionTotals {
+  const row = db
+    .prepare(
+      `
+        SELECT
+          COALESCE(SUM(CASE WHEN transaction_type = 'BUY' THEN quantity * price ELSE 0 END), 0) AS buy_amount,
+          COALESCE(SUM(CASE WHEN transaction_type = 'SELL' THEN quantity * price ELSE 0 END), 0) AS sell_amount,
+          COALESCE(SUM(fee), 0) AS total_fees,
+          COALESCE(SUM(brokerage_fee), 0) AS brokerage_fees,
+          COALESCE(SUM(stamp_duty), 0) AS stamp_duty,
+          COALESCE(SUM(transaction_levy), 0) AS transaction_levy,
+          COALESCE(SUM(trading_fee), 0) AS trading_fees
+        FROM transactions
+      `
+    )
+    .get() as
+    | {
+        buy_amount: number;
+        sell_amount: number;
+        total_fees: number;
+        brokerage_fees: number;
+        stamp_duty: number;
+        transaction_levy: number;
+        trading_fees: number;
+      }
+    | undefined;
+
+  return {
+    buyAmount: row?.buy_amount ?? 0,
+    sellAmount: row?.sell_amount ?? 0,
+    totalFees: row?.total_fees ?? 0,
+    brokerageFees: row?.brokerage_fees ?? 0,
+    stampDuty: row?.stamp_duty ?? 0,
+    transactionLevy: row?.transaction_levy ?? 0,
+    tradingFees: row?.trading_fees ?? 0
+  };
+}
+
+function getTotalDividendsReceived(): number {
+  const row = db
+    .prepare(
+      `
+        SELECT COALESCE(SUM(received_amount), 0) AS total_received
+        FROM dividends
+      `
+    )
+    .get() as { total_received: number } | undefined;
+
+  return row?.total_received ?? 0;
+}
+
+function buildPurchasedCostSummary(holdings: HoldingWithMetrics[]): PurchasedCostSummary {
+  const transactionTotals = getTransactionTotals();
+  const cumulativeDividends = getTotalDividendsReceived();
+
+  const currentCostBasis = holdings.reduce((acc, holding) => acc + holding.costBasis, 0);
+  const currentMarketValue = holdings.reduce((acc, holding) => acc + holding.marketValue, 0);
+  const currentUnrealizedPL = currentMarketValue - currentCostBasis;
+  const effectiveBuyAmount = Math.max(transactionTotals.buyAmount, currentCostBasis);
+  const otherFees = Math.max(
+    0,
+    transactionTotals.totalFees -
+      (transactionTotals.brokerageFees +
+        transactionTotals.stampDuty +
+        transactionTotals.transactionLevy +
+        transactionTotals.tradingFees)
+  );
+  const netInvested = effectiveBuyAmount + transactionTotals.totalFees - transactionTotals.sellAmount;
+  const totalReturn =
+    currentMarketValue +
+    transactionTotals.sellAmount +
+    cumulativeDividends -
+    effectiveBuyAmount -
+    transactionTotals.totalFees;
+
+  return {
+    currentCostBasis: roundMoney(currentCostBasis),
+    currentMarketValue: roundMoney(currentMarketValue),
+    currentUnrealizedPL: roundMoney(currentUnrealizedPL),
+    cumulativeBuyAmount: roundMoney(effectiveBuyAmount),
+    cumulativeSellAmount: roundMoney(transactionTotals.sellAmount),
+    cumulativeDividends: roundMoney(cumulativeDividends),
+    brokerageFees: roundMoney(transactionTotals.brokerageFees),
+    stampDuty: roundMoney(transactionTotals.stampDuty),
+    transactionLevy: roundMoney(transactionTotals.transactionLevy),
+    tradingFees: roundMoney(transactionTotals.tradingFees),
+    otherFees: roundMoney(otherFees),
+    totalFees: roundMoney(transactionTotals.totalFees),
+    netInvested: roundMoney(netInvested),
+    totalReturn: roundMoney(totalReturn)
+  };
+}
+
 export function listHoldingsWithMetrics(): HoldingWithMetrics[] {
   const holdings = getHoldingRows().map(mapHoldingRow);
   const snapshots = getLatestSnapshots(holdings.map((item) => item.symbol));
@@ -260,11 +366,15 @@ export function listManualAssetsWithMetrics(): ManualAssetWithMetrics[] {
 
 export function listHoldings(): HoldingsResponse {
   const settings = getSettings();
+  const holdings = listHoldingsWithMetrics();
+  const manualAssets = listManualAssetsWithMetrics();
+
   return {
-    holdings: listHoldingsWithMetrics(),
+    holdings,
     watchlist: listWatchlistWithQuotes(),
-    manualAssets: listManualAssetsWithMetrics(),
+    manualAssets,
     transactions: listTransactions({ limit: 100 }),
+    costSummary: buildPurchasedCostSummary(holdings),
     refreshStatus: settings.lastRefreshStatus,
     lastRefreshAt: settings.lastRefreshAt,
     lastRefreshProvider: settings.lastRefreshProvider,
@@ -342,11 +452,23 @@ export function listDividends(): DividendsResponse {
     .all() as Array<{ symbol: string; total_received: number }>;
 
   const totalReceived = byAssetRows.reduce((acc, row) => acc + row.total_received, 0);
+  const portfolioCostRow = db
+    .prepare(
+      `
+        SELECT
+          COALESCE((SELECT SUM(quantity * average_cost) FROM holdings), 0) AS holdings_cost,
+          COALESCE((SELECT SUM(quantity * average_cost) FROM manual_assets), 0) AS manual_cost
+      `
+    )
+    .get() as { holdings_cost: number; manual_cost: number };
+  const totalCostBasis = (portfolioCostRow?.holdings_cost ?? 0) + (portfolioCostRow?.manual_cost ?? 0);
+  const yieldPct = totalCostBasis <= 0 ? 0 : roundPercent((totalReceived / totalCostBasis) * 100);
 
   return {
     records: records.map(mapDividendRow),
     summary: {
       totalReceived: roundMoney(totalReceived),
+      yieldPct,
       byAsset: byAssetRows.map((row) => ({
         symbol: row.symbol,
         totalReceived: roundMoney(row.total_received)
@@ -359,6 +481,7 @@ function buildPortfolioSummary(
   holdings: HoldingWithMetrics[],
   manualAssets: ManualAssetWithMetrics[],
   dividends: DividendsResponse,
+  transactionTotals: TransactionTotals,
   refreshStatus: RefreshStatus,
   lastRefreshAt: string | null,
   lastRefreshProvider: string | null,
@@ -370,26 +493,40 @@ function buildPortfolioSummary(
   const totalUnrealizedPL = allPositions.reduce((acc, position) => acc + position.unrealizedPL, 0);
   const totalUnrealizedReturnPct =
     totalCostBasis === 0 ? 0 : roundPercent((totalUnrealizedPL / totalCostBasis) * 100);
+  const holdingsCostBasis = holdings.reduce((acc, position) => acc + position.costBasis, 0);
   const todayApproxChange = holdings.reduce(
     (acc, position) => acc + (position.todayChange ?? 0),
     0
   );
-  const yesterdayCloseValue = holdings.reduce((acc, position) => {
-    if (position.todayChange == null || position.quantity <= 0) {
-      return acc;
+  const previousCloseHoldingsValue = holdings.reduce((acc, position) => {
+    const currentValue = position.currentPrice * position.quantity;
+    const changeValue = position.todayChange ?? 0;
+    const previousCloseValue = currentValue - changeValue;
+
+    if (!Number.isFinite(previousCloseValue) || previousCloseValue <= 0) {
+      return acc + currentValue;
     }
 
-    const unitChange = position.todayChange / position.quantity;
-    const previousClosePrice = position.currentPrice - unitChange;
-    if (!Number.isFinite(previousClosePrice) || previousClosePrice <= 0) {
-      return acc;
-    }
-
-    return acc + previousClosePrice * position.quantity;
+    return acc + previousCloseValue;
   }, 0);
+  const previousCloseManualValue = manualAssets.reduce((acc, asset) => acc + asset.marketValue, 0);
+  const yesterdayCloseValue = previousCloseHoldingsValue + previousCloseManualValue;
   const todayReturnPct =
     yesterdayCloseValue <= 0 ? 0 : roundPercent((todayApproxChange / yesterdayCloseValue) * 100);
+
   const totalDividends = dividends.summary.totalReceived;
+  const manualCostBasis = manualAssets.reduce((acc, asset) => acc + asset.costBasis, 0);
+  const effectiveBuyAmount = Math.max(transactionTotals.buyAmount, holdingsCostBasis) + manualCostBasis;
+  const totalFees = transactionTotals.totalFees;
+  const totalReturn =
+    totalMarketValue +
+    transactionTotals.sellAmount +
+    totalDividends -
+    effectiveBuyAmount -
+    totalFees;
+  const netInvested = effectiveBuyAmount + totalFees - transactionTotals.sellAmount;
+  const totalReturnPct = netInvested <= 0 ? 0 : roundPercent((totalReturn / netInvested) * 100);
+  const realizedPL = totalReturn - totalUnrealizedPL;
 
   return {
     totalMarketValue: roundMoney(totalMarketValue),
@@ -397,7 +534,10 @@ function buildPortfolioSummary(
     totalUnrealizedPL: roundMoney(totalUnrealizedPL),
     totalUnrealizedReturnPct,
     totalDividends: roundMoney(totalDividends),
-    totalReturn: roundMoney(totalUnrealizedPL + totalDividends),
+    totalFees: roundMoney(totalFees),
+    realizedPL: roundMoney(realizedPL),
+    totalReturn: roundMoney(totalReturn),
+    totalReturnPct,
     todayApproxChange: roundMoney(todayApproxChange),
     todayReturnPct,
     holdingsCount: holdings.length,
@@ -429,12 +569,14 @@ export function getPortfolioSnapshot(): PortfolioResponse {
   const holdings = listHoldingsWithMetrics();
   const manualAssets = listManualAssetsWithMetrics();
   const dividends = listDividends();
+  const transactionTotals = getTransactionTotals();
   const settings = getSettings();
 
   const summary = buildPortfolioSummary(
     holdings,
     manualAssets,
     dividends,
+    transactionTotals,
     settings.lastRefreshStatus,
     settings.lastRefreshAt,
     settings.lastRefreshProvider,
@@ -789,8 +931,9 @@ export function deleteManualAsset(id: number): boolean {
 
 export function createDividend(input: {
   symbol: string;
-  exDividendDate: string | null;
+  exDividendDate: string;
   paymentDate: string;
+  eventLabel: string;
   dividendPerUnit: number;
   receivedAmount: number;
   currency: string;
@@ -803,6 +946,7 @@ export function createDividend(input: {
           symbol,
           ex_dividend_date,
           payment_date,
+          event_label,
           dividend_per_unit,
           received_amount,
           currency,
@@ -812,6 +956,7 @@ export function createDividend(input: {
           @symbol,
           @exDividendDate,
           @paymentDate,
+          @eventLabel,
           @dividendPerUnit,
           @receivedAmount,
           @currency,
@@ -835,6 +980,7 @@ export function updateDividend(
     symbol: string;
     exDividendDate: string | null;
     paymentDate: string;
+    eventLabel: string;
     dividendPerUnit: number;
     receivedAmount: number;
     currency: string;
@@ -855,6 +1001,10 @@ export function updateDividend(
   if (input.paymentDate !== undefined) {
     updates.push("payment_date = @paymentDate");
     params.paymentDate = input.paymentDate;
+  }
+  if (input.eventLabel !== undefined) {
+    updates.push("event_label = @eventLabel");
+    params.eventLabel = input.eventLabel;
   }
   if (input.dividendPerUnit !== undefined) {
     updates.push("dividend_per_unit = @dividendPerUnit");
