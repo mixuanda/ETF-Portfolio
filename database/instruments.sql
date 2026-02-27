@@ -12,7 +12,7 @@ INSERT INTO instruments (
   ('02800', 'Tracker Fund of Hong Kong', '盈富基金', 'equity etf', 'State Street', 'HKD', 'Hong Kong', 'hang seng index hsi large cap hk equity', 1),
   ('03010', 'Hang Seng TECH ETF', '恒生科技ETF', 'equity etf', 'Hang Seng Investment', 'HKD', 'Hong Kong', 'tech growth internet innovation', 1),
   ('02100', 'ABF Hong Kong Bond Index Fund', 'ABF香港創富債券指數基金', 'bond etf', 'Hong Kong Monetary Authority', 'HKD', 'Hong Kong', 'bond fixed income hkd government', 1),
-  ('02006', 'Global X Hang Seng Tech Covered Call ETF', 'Global X 恒生科技備兌認購期權ETF', 'equity etf', 'Global X', 'HKD', 'Hong Kong', 'covered call options income tech', 1),
+  ('03417', 'Global X Hang Seng TECH Covered Call Active ETF', 'Global X 恒生科技備兌認購期權主動型ETF', 'equity etf', 'Mirae Asset Global Investments (Hong Kong) Limited', 'HKD', 'Hong Kong', 'covered call options income tech 02006 legacy', 1),
   ('03153', 'China Government Bond ETF', '中國國債ETF', 'bond etf', 'CSOP', 'HKD', 'China', 'china government bond defensive', 1),
   ('03195', 'Asia Investment Grade Bond ETF', '亞洲投資級別債券ETF', 'bond etf', 'Value Partners', 'HKD', 'Asia', 'investment grade bond income', 1),
   ('03421', 'US Treasury 20Y ETF', '美國20年期國債ETF', 'bond etf', 'CSOP', 'HKD', 'United States', 'us treasury duration hedge bond', 1),

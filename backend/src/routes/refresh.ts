@@ -3,6 +3,7 @@ import type { RefreshResponse } from "@portfolio/shared";
 import { config } from "../config.js";
 import { listTrackedSymbols, saveQuoteSnapshots } from "../services/portfolioService.js";
 import { getSettings, setRefreshState } from "../services/settingsService.js";
+import { syncFirebaseProgramSafely } from "../services/firebaseSyncHook.js";
 import { syncInstrumentMetadata } from "../services/instrumentMetadataSyncService.js";
 import { createQuoteService } from "../services/quotes/createQuoteService.js";
 
@@ -96,10 +97,11 @@ router.post("/refresh", async (_req, res, next) => {
     const isPartial = failedSymbols.length > 0;
 
     const status = isPartial ? "partial_success" : "success";
+    const firstFailure = failedSymbols[0];
 
     const message =
       isPartial
-        ? `Partial refresh succeeded. Updated ${result.quotes.length} symbol(s), ${failedSymbols.length} symbol(s) failed and still use older cached data.`
+        ? `Partial refresh succeeded. Updated ${result.quotes.length} symbol(s), ${failedSymbols.length} symbol(s) failed and still use older cached data.${firstFailure ? ` First failure: ${firstFailure.symbol}: ${firstFailure.message}` : ""}`
         : usesDemoData
           ? `Updated ${result.quotes.length} symbol(s) using demo quote data (${result.provider}).`
           : `Updated ${result.quotes.length} symbol(s) from delayed market quotes.`;
@@ -110,6 +112,8 @@ router.post("/refresh", async (_req, res, next) => {
       provider: result.provider,
       error: isPartial ? message : null
     });
+
+    await syncFirebaseProgramSafely("refresh snapshots");
 
     const response: RefreshResponse = {
       status,

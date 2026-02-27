@@ -7,6 +7,7 @@ import { normalizeForHkex } from "../symbolNormalization.js";
 const HKEX_QUOTE_PAGE =
   "https://www.hkex.com.hk/Market-Data/Securities-Prices/Exchange-Traded-Products/Exchange-Traded-Products-Quote?sc_lang=en";
 const HKEX_WIDGET_ENDPOINT = "https://www1.hkex.com.hk/hkexwidget/data/getequityquote";
+const HKEX_SEARCH_ENDPOINT = "https://www1.hkex.com.hk/hkexwidget/data/getstocksearch";
 const TOKEN_TTL_MS = 6 * 60 * 60 * 1000;
 const FALLBACK_TOKEN =
   "evLtsLsBNAUVTPxtGqVeGx4vHgdwbAY1FBhdsZbSz99BAEQ4LbPtHhZm7g6cOcC5";
@@ -76,6 +77,18 @@ type HkexPayload = {
   };
 };
 
+type HkexStockSearchPayload = {
+  data?: {
+    responsecode?: string;
+    responsemsg?: string;
+    stocklist?: Array<{
+      sym?: string;
+      nm?: string;
+      type?: string;
+    }>;
+  };
+};
+
 function parseNumber(raw: string | number | undefined | null): number | null {
   if (raw == null) {
     return null;
@@ -115,6 +128,30 @@ function parseJsonpPayload(body: string): HkexPayload {
 
   const json = body.slice(start + 1, end);
   return JSON.parse(json) as HkexPayload;
+}
+
+function parseJsonpPayloadForSearch(body: string): HkexStockSearchPayload {
+  const start = body.indexOf("(");
+  const end = body.lastIndexOf(")");
+  if (start < 0 || end <= start) {
+    throw new Error("HKEX stock search returned unexpected JSONP payload.");
+  }
+
+  const json = body.slice(start + 1, end);
+  return JSON.parse(json) as HkexStockSearchPayload;
+}
+
+function normalizeHintSymbol(symbol: string): string {
+  const upper = symbol.trim().toUpperCase();
+  if (!upper) {
+    return upper;
+  }
+  const stripped = upper.replace(/\.HK$/, "");
+  if (!/^\d+$/.test(stripped)) {
+    return stripped;
+  }
+  const withoutLeading = String(Number(stripped));
+  return Number.isFinite(Number(withoutLeading)) ? withoutLeading : stripped;
 }
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
@@ -175,6 +212,65 @@ export class HkexQuoteProvider implements QuoteProvider {
 
   constructor(private readonly timeoutMs: number) {}
 
+  private async buildInvalidSymbolHint(symbol: string, token: string): Promise<string> {
+    const hintCandidates = [symbol.trim().toUpperCase(), normalizeHintSymbol(symbol)];
+    const keywords = [...new Set(hintCandidates.filter((item) => item.length > 0))];
+
+    const suggestions: Array<{ sym: string; nm: string }> = [];
+
+    for (const keyword of keywords) {
+      const callbackName = `jQuery${Date.now()}_${Math.floor(Math.random() * 1000000)}`;
+      const query = new URLSearchParams({
+        lang: "eng",
+        token,
+        pre: "8",
+        keyword,
+        callback: callbackName,
+        qid: String(Date.now())
+      });
+
+      try {
+        const response = await requestText({
+          url: `${HKEX_SEARCH_ENDPOINT}?${query.toString()}`,
+          timeoutMs: this.timeoutMs,
+          headers: REQUEST_HEADERS
+        });
+
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          continue;
+        }
+
+        const payload = parseJsonpPayloadForSearch(response.body);
+        const list = payload.data?.stocklist ?? [];
+        for (const item of list) {
+          if (item.type !== "ETP" || !item.sym || !item.nm) {
+            continue;
+          }
+          const duplicate = suggestions.some((entry) => entry.sym === item.sym);
+          if (!duplicate) {
+            suggestions.push({ sym: item.sym, nm: item.nm });
+          }
+          if (suggestions.length >= 3) {
+            break;
+          }
+        }
+
+        if (suggestions.length >= 3) {
+          break;
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    if (suggestions.length === 0) {
+      return "Symbol not found in HKEX ETP quote universe. Verify the code in Holdings search or run instrument metadata sync.";
+    }
+
+    const formatted = suggestions.map((item) => `${item.sym} (${item.nm})`).join("; ");
+    return `Symbol not found in HKEX ETP quote universe. Possible ETP matches: ${formatted}.`;
+  }
+
   private async fetchSingle(symbol: string, token: string): Promise<{ quote?: QuoteData; error?: QuoteError }> {
     const normalized = normalizeForHkex(symbol);
     const callbackName = `jQuery${Date.now()}_${Math.floor(Math.random() * 1000000)}`;
@@ -208,6 +304,16 @@ export class HkexQuoteProvider implements QuoteProvider {
       const responseCode = payload.data?.responsecode;
 
       if (responseCode !== "000") {
+        if (responseCode === "002") {
+          const hint = await this.buildInvalidSymbolHint(symbol, token);
+          return {
+            error: {
+              symbol,
+              message: `HKEX quote unavailable (002 Invalid Input). ${hint}`
+            }
+          };
+        }
+
         return {
           error: {
             symbol,

@@ -374,6 +374,21 @@ function buildPortfolioSummary(
     (acc, position) => acc + (position.todayChange ?? 0),
     0
   );
+  const yesterdayCloseValue = holdings.reduce((acc, position) => {
+    if (position.todayChange == null || position.quantity <= 0) {
+      return acc;
+    }
+
+    const unitChange = position.todayChange / position.quantity;
+    const previousClosePrice = position.currentPrice - unitChange;
+    if (!Number.isFinite(previousClosePrice) || previousClosePrice <= 0) {
+      return acc;
+    }
+
+    return acc + previousClosePrice * position.quantity;
+  }, 0);
+  const todayReturnPct =
+    yesterdayCloseValue <= 0 ? 0 : roundPercent((todayApproxChange / yesterdayCloseValue) * 100);
   const totalDividends = dividends.summary.totalReceived;
 
   return {
@@ -384,6 +399,7 @@ function buildPortfolioSummary(
     totalDividends: roundMoney(totalDividends),
     totalReturn: roundMoney(totalUnrealizedPL + totalDividends),
     todayApproxChange: roundMoney(todayApproxChange),
+    todayReturnPct,
     holdingsCount: holdings.length,
     manualAssetsCount: manualAssets.length,
     lastRefreshAt,

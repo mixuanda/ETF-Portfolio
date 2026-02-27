@@ -7,6 +7,7 @@ import {
   listWatchlistWithQuotes,
   removeWatchlistItem
 } from "../services/trackingService.js";
+import { syncFirebaseProgramSafely } from "../services/firebaseSyncHook.js";
 import { parseId, toValidationMessage } from "../utils/api.js";
 import { createTransactionSchema, createWatchlistSchema } from "../validation/schemas.js";
 
@@ -16,10 +17,11 @@ router.get("/watchlist", (_req, res) => {
   res.json({ watchlist: listWatchlistWithQuotes() });
 });
 
-router.post("/watchlist", (req, res) => {
+router.post("/watchlist", async (req, res) => {
   try {
     const payload = createWatchlistSchema.parse(req.body) as Parameters<typeof addToWatchlist>[0];
     const item = addToWatchlist(payload);
+    await syncFirebaseProgramSafely("create watchlist item");
     res.status(201).json(item);
   } catch (error) {
     if (error instanceof ZodError) {
@@ -36,7 +38,7 @@ router.post("/watchlist", (req, res) => {
   }
 });
 
-router.delete("/watchlist/:id", (req, res) => {
+router.delete("/watchlist/:id", async (req, res) => {
   try {
     const id = parseId(req.params.id);
     const removed = removeWatchlistItem(id);
@@ -46,6 +48,7 @@ router.delete("/watchlist/:id", (req, res) => {
       return;
     }
 
+    await syncFirebaseProgramSafely("delete watchlist item");
     res.status(204).send();
   } catch (error) {
     if (error instanceof Error && error.message === "Invalid id parameter") {
@@ -62,10 +65,11 @@ router.get("/transactions", (req, res) => {
   res.json({ transactions });
 });
 
-router.post("/transactions", (req, res) => {
+router.post("/transactions", async (req, res) => {
   try {
     const payload = createTransactionSchema.parse(req.body) as Parameters<typeof createTransaction>[0];
     const created = createTransaction(payload);
+    await syncFirebaseProgramSafely("create transaction");
     res.status(201).json(created);
   } catch (error) {
     if (error instanceof ZodError) {

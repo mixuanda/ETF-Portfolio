@@ -77,6 +77,24 @@ p {
   margin-bottom: 0.4rem;
 }
 
+.app-header__meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.locale-switcher {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 180px;
+}
+
+.locale-switcher span {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
 .app-nav {
   margin-top: 1rem;
   display: flex;
@@ -549,6 +567,16 @@ select:focus {
     overflow-x: auto;
     flex-wrap: nowrap;
     padding-bottom: 0.25rem;
+  }
+
+  .app-header__meta-row {
+    flex-direction: column;
+  }
+
+  .locale-switcher {
+    min-width: 0;
+    width: 100%;
+    max-width: 280px;
   }
 
   .app-nav__link {

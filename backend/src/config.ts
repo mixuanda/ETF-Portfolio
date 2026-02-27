@@ -56,5 +56,11 @@ export const config = {
   requestTimeoutMs: toNumber(process.env.REQUEST_TIMEOUT_MS, 8000),
   enableHkexBackup: toBoolean(process.env.ENABLE_HKEX_BACKUP, true),
   enableDemoMode: toBoolean(process.env.ENABLE_DEMO_MODE, false),
-  allowDemoFallback: toBoolean(process.env.ALLOW_DEMO_FALLBACK, false)
+  allowDemoFallback: toBoolean(process.env.ALLOW_DEMO_FALLBACK, false),
+  firebaseEnabled: toBoolean(process.env.FIREBASE_ENABLED, false),
+  firebaseProjectId: process.env.FIREBASE_PROJECT_ID ?? null,
+  firebaseClientEmail: process.env.FIREBASE_CLIENT_EMAIL ?? null,
+  firebasePrivateKey: process.env.FIREBASE_PRIVATE_KEY ?? null,
+  firebasePortfolioId: process.env.FIREBASE_PORTFOLIO_ID ?? "default",
+  firebaseRestoreOnBoot: toBoolean(process.env.FIREBASE_RESTORE_ON_BOOT, true)
 } as const;

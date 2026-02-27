@@ -11,7 +11,8 @@
     "dev": "npm run build -w shared && concurrently \"npm run dev -w shared\" \"npm run dev -w backend\" \"npm run dev -w frontend\"",
     "build": "npm run build -w shared && npm run build -w backend && npm run build -w frontend",
     "db:init": "npm run db:init -w backend",
-    "db:seed": "npm run db:seed -w backend"
+    "db:seed": "npm run db:seed -w backend",
+    "firebase:sync": "npm run firebase:sync -w backend"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

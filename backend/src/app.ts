@@ -2,6 +2,7 @@ import cors from "cors";
 import express from "express";
 import { config } from "./config.js";
 import dividendsRoutes from "./routes/dividends.js";
+import firebaseProgramRoutes from "./routes/firebaseProgram.js";
 import holdingsRoutes from "./routes/holdings.js";
 import instrumentsRoutes from "./routes/instruments.js";
 import manualAssetsRoutes from "./routes/manualAssets.js";
@@ -27,6 +28,7 @@ app.get("/api/health", (_req, res) => {
 app.use("/api", portfolioRoutes);
 app.use("/api", holdingsRoutes);
 app.use("/api", instrumentsRoutes);
+app.use("/api", firebaseProgramRoutes);
 app.use("/api", manualAssetsRoutes);
 app.use("/api", dividendsRoutes);
 app.use("/api", trackingRoutes);

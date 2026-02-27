@@ -289,6 +289,38 @@ const upsertInstrumentStmt = db.prepare(
   `
 );
 
+const upsertInactiveInstrumentStmt = db.prepare(
+  `
+    INSERT INTO instruments (
+      symbol,
+      name_en,
+      name_zh,
+      asset_type,
+      issuer,
+      currency,
+      region,
+      search_keywords,
+      is_active,
+      updated_at
+    ) VALUES (
+      @symbol,
+      @nameEn,
+      '',
+      @assetType,
+      '',
+      'HKD',
+      'Hong Kong',
+      @searchKeywords,
+      0,
+      CURRENT_TIMESTAMP
+    )
+    ON CONFLICT(symbol)
+    DO UPDATE SET
+      is_active = 0,
+      updated_at = CURRENT_TIMESTAMP
+  `
+);
+
 const updateHoldingStmt = db.prepare(
   `
     UPDATE holdings
@@ -389,14 +421,12 @@ export async function syncInstrumentMetadata(input: {
       const message = error instanceof Error ? error.message : "Unknown metadata sync error";
 
       if (message.includes("(002") || message.toLowerCase().includes("invalid input")) {
-        db.prepare(
-          `
-            UPDATE instruments
-            SET is_active = 0,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE symbol = ?
-          `
-        ).run(symbol);
+        upsertInactiveInstrumentStmt.run({
+          symbol,
+          nameEn: symbol,
+          assetType: "etf",
+          searchKeywords: buildKeywords([symbol])
+        });
       }
 
       failedSymbols.push({

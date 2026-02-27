@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { RefreshStatus } from "@portfolio/shared";
 import { api } from "../api/client";
+import { useI18n } from "../i18n/provider";
 
 export function useRefreshPrices(onCompleted?: () => Promise<void> | void): {
   refreshStatus: RefreshStatus;
@@ -8,12 +9,19 @@ export function useRefreshPrices(onCompleted?: () => Promise<void> | void): {
   isRefreshing: boolean;
   triggerRefresh: () => Promise<void>;
 } {
+  const { t, locale } = useI18n();
   const [refreshStatus, setRefreshStatus] = useState<RefreshStatus>("idle");
-  const [refreshMessage, setRefreshMessage] = useState<string>("Waiting for manual refresh.");
+  const [refreshMessage, setRefreshMessage] = useState<string>(t("refresh.waiting"));
+
+  useEffect(() => {
+    if (refreshStatus === "idle") {
+      setRefreshMessage(t("refresh.waiting"));
+    }
+  }, [locale, refreshStatus, t]);
 
   async function triggerRefresh(): Promise<void> {
     setRefreshStatus("refreshing");
-    setRefreshMessage("Refreshing delayed quote cache...");
+    setRefreshMessage(t("refresh.refreshing"));
 
     try {
       const result = await api.refreshPrices();
@@ -26,7 +34,7 @@ export function useRefreshPrices(onCompleted?: () => Promise<void> | void): {
     } catch (error) {
       setRefreshStatus("failed");
       setRefreshMessage(
-        error instanceof Error ? error.message : "Refresh failed due to an unexpected error."
+        error instanceof Error ? error.message : t("refresh.failedUnexpected")
       );
     }
   }

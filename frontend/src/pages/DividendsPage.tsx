@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { DividendsResponse } from "@portfolio/shared";
 import { api } from "../api/client";
+import { useI18n } from "../i18n/provider";
 import { formatCurrency } from "../utils/format";
 
 interface DividendFormState {
@@ -24,6 +25,7 @@ const defaultForm: DividendFormState = {
 };
 
 export function DividendsPage(): JSX.Element {
+  const { t } = useI18n();
   const [data, setData] = useState<DividendsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -37,11 +39,11 @@ export function DividendsPage(): JSX.Element {
       const response = await api.getDividends();
       setData(response);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Failed to load dividends");
+      setError(loadError instanceof Error ? loadError.message : t("common.notAvailable"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void loadData();
@@ -57,17 +59,17 @@ export function DividendsPage(): JSX.Element {
     const receivedAmount = Number(form.receivedAmount);
 
     if (!form.symbol.trim() || !form.paymentDate.trim()) {
-      setFormError("Symbol and payment date are required.");
+      setFormError(t("dividends.error.requiredFields"));
       return;
     }
 
     if (!Number.isFinite(dividendPerUnit) || dividendPerUnit < 0) {
-      setFormError("Dividend per unit must be a valid non-negative number.");
+      setFormError(t("dividends.error.perUnitInvalid"));
       return;
     }
 
     if (!Number.isFinite(receivedAmount) || receivedAmount < 0) {
-      setFormError("Received amount must be a valid non-negative number.");
+      setFormError(t("dividends.error.receivedInvalid"));
       return;
     }
 
@@ -91,52 +93,52 @@ export function DividendsPage(): JSX.Element {
       setEditingId(null);
       await loadData();
     } catch (submitError) {
-      setFormError(submitError instanceof Error ? submitError.message : "Unable to save dividend");
+      setFormError(submitError instanceof Error ? submitError.message : t("dividends.error.save"));
     }
   }
 
   async function handleDelete(id: number): Promise<void> {
-    if (!window.confirm("Delete this dividend record?")) {
+    if (!window.confirm(t("dividends.deleteConfirm"))) {
       return;
     }
     try {
       await api.deleteDividend(id);
       await loadData();
     } catch (deleteError) {
-      setFormError(deleteError instanceof Error ? deleteError.message : "Unable to delete dividend");
+      setFormError(deleteError instanceof Error ? deleteError.message : t("dividends.error.delete"));
     }
   }
 
   if (loading) {
-    return <p>Loading dividends...</p>;
+    return <p>{t("common.loadingDividends")}</p>;
   }
 
   if (error || !data) {
-    return <p className="error">{error ?? "Dividends unavailable"}</p>;
+    return <p className="error">{error ?? t("common.notAvailable")}</p>;
   }
 
   return (
     <section className="page-grid">
       <div className="page-header">
-        <h2>Dividends</h2>
-        <p className="muted">Track ex-dividend dates, payment dates, and received cash.</p>
+        <h2>{t("dividends.title")}</h2>
+        <p className="muted">{t("dividends.subtitle")}</p>
       </div>
 
       <section className="stats-grid stats-grid--compact">
         <article className="stat-card">
-          <p className="stat-card__label">Total Received Cash</p>
+          <p className="stat-card__label">{t("dividends.stat.totalCash")}</p>
           <p className="stat-card__value">{formatCurrency(data.summary.totalReceived)}</p>
         </article>
         <article className="stat-card">
-          <p className="stat-card__label">Records</p>
+          <p className="stat-card__label">{t("dividends.stat.records")}</p>
           <p className="stat-card__value">{data.records.length}</p>
         </article>
       </section>
 
       <section className="panel">
-        <h3>Total Dividends by Asset</h3>
+        <h3>{t("dividends.byAsset")}</h3>
         {topAssets.length === 0 ? (
-          <p className="muted">No dividend records yet.</p>
+          <p className="muted">{t("dividends.empty")}</p>
         ) : (
           <ul className="summary-list">
             {topAssets.map((entry) => (
@@ -150,19 +152,19 @@ export function DividendsPage(): JSX.Element {
       </section>
 
       <section className="panel">
-        <h3>Dividend History</h3>
+        <h3>{t("dividends.history")}</h3>
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Symbol</th>
-                <th>Ex-Date</th>
-                <th>Payment Date</th>
-                <th>Dividend / Unit</th>
-                <th>Received Amount</th>
-                <th>Currency</th>
-                <th>Notes</th>
-                <th>Actions</th>
+                <th>{t("dividends.form.symbol")}</th>
+                <th>{t("dividends.form.exDate")}</th>
+                <th>{t("dividends.form.paymentDate")}</th>
+                <th>{t("dividends.form.perUnit")}</th>
+                <th>{t("dividends.form.received")}</th>
+                <th>{t("dividends.table.currency")}</th>
+                <th>{t("dividends.form.notes")}</th>
+                <th>{t("dividends.table.actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -193,14 +195,14 @@ export function DividendsPage(): JSX.Element {
                           });
                         }}
                       >
-                        Edit
+                        {t("dividends.action.edit")}
                       </button>
                       <button
                         type="button"
                         className="btn btn--danger"
                         onClick={() => void handleDelete(record.id)}
                       >
-                        Delete
+                        {t("dividends.action.delete")}
                       </button>
                     </div>
                   </td>
@@ -212,12 +214,12 @@ export function DividendsPage(): JSX.Element {
       </section>
 
       <section className="panel">
-        <h3>{editingId ? "Edit Dividend Record" : "Add Dividend Record"}</h3>
+        <h3>{editingId ? t("dividends.form.editTitle") : t("dividends.form.addTitle")}</h3>
         {formError ? <p className="error">{formError}</p> : null}
         <form className="data-form" onSubmit={(event) => void handleSubmit(event)}>
           <div className="form-grid">
             <label>
-              Symbol
+              {t("dividends.form.symbol")}
               <input
                 value={form.symbol}
                 onChange={(event) => setForm((prev) => ({ ...prev, symbol: event.target.value }))}
@@ -225,7 +227,7 @@ export function DividendsPage(): JSX.Element {
               />
             </label>
             <label>
-              Ex-Dividend Date
+              {t("dividends.form.exDate")}
               <input
                 type="date"
                 value={form.exDividendDate}
@@ -235,7 +237,7 @@ export function DividendsPage(): JSX.Element {
               />
             </label>
             <label>
-              Payment Date
+              {t("dividends.form.paymentDate")}
               <input
                 type="date"
                 value={form.paymentDate}
@@ -244,7 +246,7 @@ export function DividendsPage(): JSX.Element {
               />
             </label>
             <label>
-              Dividend per Unit
+              {t("dividends.form.perUnit")}
               <input
                 type="number"
                 min="0"
@@ -257,7 +259,7 @@ export function DividendsPage(): JSX.Element {
               />
             </label>
             <label>
-              Received Amount
+              {t("dividends.form.received")}
               <input
                 type="number"
                 min="0"
@@ -270,7 +272,7 @@ export function DividendsPage(): JSX.Element {
               />
             </label>
             <label>
-              Currency
+              {t("dividends.form.currency")}
               <input
                 value={form.currency}
                 onChange={(event) =>
@@ -280,7 +282,7 @@ export function DividendsPage(): JSX.Element {
               />
             </label>
             <label className="full-width">
-              Notes
+              {t("dividends.form.notes")}
               <textarea
                 rows={2}
                 value={form.notes}
@@ -291,7 +293,7 @@ export function DividendsPage(): JSX.Element {
 
           <div className="row-actions">
             <button type="submit" className="btn btn--primary">
-              {editingId ? "Update Record" : "Add Record"}
+              {editingId ? t("dividends.form.update") : t("dividends.form.add")}
             </button>
             {editingId ? (
               <button
@@ -302,7 +304,7 @@ export function DividendsPage(): JSX.Element {
                   setForm(defaultForm);
                 }}
               >
-                Cancel Edit
+                {t("dividends.form.cancel")}
               </button>
             ) : null}
           </div>

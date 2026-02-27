@@ -1,5 +1,6 @@
 import type { InstrumentDetail, InstrumentSearchResult } from "@portfolio/shared";
 import db from "../db/client.js";
+import { searchHkexEtps } from "./hkexStockSearchService.js";
 
 type InstrumentRow = {
   symbol: string;
@@ -44,6 +45,103 @@ function toSearchResult(detail: InstrumentDetail): InstrumentSearchResult {
     region: detail.region,
     isActive: detail.isActive
   };
+}
+
+function inferAssetType(name: string): string {
+  const normalized = name.toLowerCase();
+  if (normalized.includes("bond")) {
+    return "bond etf";
+  }
+  if (normalized.includes("money market")) {
+    return "money market etf";
+  }
+  return "equity etf";
+}
+
+function toSearchKeywords(input: InstrumentSearchResult): string {
+  const parts = [
+    input.symbol,
+    input.nameEn,
+    input.nameZh,
+    input.assetType,
+    input.issuer,
+    input.region
+  ];
+
+  const deduped = new Set(
+    parts
+      .map((item) => item.trim().toLowerCase())
+      .filter((item) => item.length > 0)
+  );
+  return [...deduped].join(" ");
+}
+
+const upsertInstrumentFromSearchStmt = db.prepare(
+  `
+    INSERT INTO instruments (
+      symbol,
+      name_en,
+      name_zh,
+      asset_type,
+      issuer,
+      currency,
+      region,
+      search_keywords,
+      is_active,
+      updated_at
+    ) VALUES (
+      @symbol,
+      @nameEn,
+      @nameZh,
+      @assetType,
+      @issuer,
+      @currency,
+      @region,
+      @searchKeywords,
+      1,
+      CURRENT_TIMESTAMP
+    )
+    ON CONFLICT(symbol)
+    DO UPDATE SET
+      name_en = excluded.name_en,
+      name_zh = CASE
+        WHEN excluded.name_zh != '' THEN excluded.name_zh
+        ELSE instruments.name_zh
+      END,
+      asset_type = excluded.asset_type,
+      issuer = CASE
+        WHEN excluded.issuer != '' THEN excluded.issuer
+        ELSE instruments.issuer
+      END,
+      currency = excluded.currency,
+      region = excluded.region,
+      search_keywords = excluded.search_keywords,
+      is_active = 1,
+      updated_at = CURRENT_TIMESTAMP
+  `
+);
+
+function persistSearchResults(results: InstrumentSearchResult[]): void {
+  if (results.length === 0) {
+    return;
+  }
+
+  const transaction = db.transaction((rows: InstrumentSearchResult[]) => {
+    for (const row of rows) {
+      upsertInstrumentFromSearchStmt.run({
+        symbol: row.symbol,
+        nameEn: row.nameEn,
+        nameZh: row.nameZh,
+        assetType: row.assetType || inferAssetType(row.nameEn),
+        issuer: row.issuer,
+        currency: row.currency || "HKD",
+        region: row.region || "Hong Kong",
+        searchKeywords: toSearchKeywords(row)
+      });
+    }
+  });
+
+  transaction(results);
 }
 
 export function getInstrumentBySymbol(symbol: string): InstrumentDetail | null {
@@ -107,7 +205,7 @@ export function getInstrumentsBySymbols(symbols: string[]): Map<string, Instrume
   }));
 }
 
-export function searchInstruments(query: string, limit = DEFAULT_LIMIT): InstrumentSearchResult[] {
+function searchInstrumentsLocal(query: string, limit = DEFAULT_LIMIT): InstrumentSearchResult[] {
   const trimmed = query.trim();
   if (!trimmed) {
     return [];
@@ -164,4 +262,38 @@ export function searchInstruments(query: string, limit = DEFAULT_LIMIT): Instrum
     }) as InstrumentRow[];
 
   return rows.map((row) => toSearchResult(mapInstrumentRow(row)));
+}
+
+export async function searchInstruments(input: {
+  query: string;
+  timeoutMs: number;
+  limit?: number;
+}): Promise<InstrumentSearchResult[]> {
+  const safeLimit = Math.max(1, Math.min(input.limit ?? DEFAULT_LIMIT, 50));
+  const query = input.query.trim();
+
+  if (!query) {
+    return [];
+  }
+
+  try {
+    const liveResults = await searchHkexEtps({
+      query,
+      timeoutMs: input.timeoutMs,
+      limit: safeLimit
+    });
+
+    if (liveResults.length > 0) {
+      persistSearchResults(liveResults);
+      return liveResults;
+    }
+  } catch (error) {
+    console.warn(
+      `[instrumentSearch] live HKEX search failed, using local catalog fallback: ${
+        error instanceof Error ? error.message : "unknown error"
+      }`
+    );
+  }
+
+  return searchInstrumentsLocal(query, safeLimit);
 }

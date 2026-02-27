@@ -1,5 +1,11 @@
+let activeIntlLocale = "en-HK";
+
+export function setFormatLocale(locale: string): void {
+  activeIntlLocale = locale;
+}
+
 export function formatCurrency(value: number, currency = "HKD"): string {
-  return new Intl.NumberFormat("en-HK", {
+  return new Intl.NumberFormat(activeIntlLocale, {
     style: "currency",
     currency,
     maximumFractionDigits: 2
@@ -18,15 +24,15 @@ export function formatSignedCurrency(value: number, currency = "HKD"): string {
   return value > 0 ? `+${amount}` : `-${amount}`;
 }
 
-export function formatDateTime(value: string | null): string {
+export function formatDateTime(value: string | null, emptyLabel = "Not refreshed yet"): string {
   if (!value) {
-    return "Not refreshed yet";
+    return emptyLabel;
   }
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
     return value;
   }
-  return new Intl.DateTimeFormat("en-HK", {
+  return new Intl.DateTimeFormat(activeIntlLocale, {
     dateStyle: "medium",
     timeStyle: "short"
   }).format(date);

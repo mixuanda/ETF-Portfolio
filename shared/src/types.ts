@@ -133,6 +133,7 @@ export interface PortfolioSummary {
   totalDividends: number;
   totalReturn: number;
   todayApproxChange: number;
+  todayReturnPct: number;
   holdingsCount: number;
   manualAssetsCount: number;
   lastRefreshAt: string | null;

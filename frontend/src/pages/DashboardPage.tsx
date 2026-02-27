@@ -5,14 +5,15 @@ import { AllocationBars } from "../components/AllocationBars";
 import { RefreshPanel } from "../components/RefreshPanel";
 import { StatCard } from "../components/StatCard";
 import { useRefreshPrices } from "../hooks/useRefreshPrices";
+import { useI18n } from "../i18n/provider";
 import {
   formatCurrency,
-  formatDateTime,
   formatSignedCurrency,
   numberTone
 } from "../utils/format";
 
 export function DashboardPage(): JSX.Element {
+  const { t } = useI18n();
   const [portfolio, setPortfolio] = useState<PortfolioResponse | null>(null);
   const [dividends, setDividends] = useState<DividendsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -28,11 +29,11 @@ export function DashboardPage(): JSX.Element {
       setPortfolio(portfolioResponse);
       setDividends(dividendsResponse);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Failed to load dashboard");
+      setError(loadError instanceof Error ? loadError.message : t("common.notAvailable"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void loadData();
@@ -49,25 +50,25 @@ export function DashboardPage(): JSX.Element {
     refreshStatus === "idle"
       ? effectiveStatus === "failed" || effectiveStatus === "partial_success"
         ? portfolio?.summary.lastRefreshError ??
-          "Latest refresh failed. Showing previous cached snapshot data."
-        : "Cached prices loaded. Use Refresh Prices when you want delayed updates."
+          t("dashboard.refreshFailedFallback")
+        : t("dashboard.refreshIdle")
       : refreshMessage;
 
   const recentDividendCount = useMemo(() => portfolio?.recentDividends.length ?? 0, [portfolio]);
 
   if (loading) {
-    return <p>Loading dashboard...</p>;
+    return <p>{t("common.loadingDashboard")}</p>;
   }
 
   if (error || !portfolio) {
-    return <p className="error">{error ?? "Dashboard data unavailable"}</p>;
+    return <p className="error">{error ?? t("common.notAvailable")}</p>;
   }
 
   return (
     <section className="page-grid">
       <div className="page-header">
-        <h2>Dashboard</h2>
-        <p className="muted">Overview of total value, return, allocation, and recent dividends.</p>
+        <h2>{t("dashboard.title")}</h2>
+        <p className="muted">{t("dashboard.subtitle")}</p>
       </div>
 
       <RefreshPanel
@@ -81,56 +82,66 @@ export function DashboardPage(): JSX.Element {
 
       <section className="stats-grid">
         <StatCard
-          label="Total Portfolio Value"
+          label={t("dashboard.stat.totalValue")}
           value={formatCurrency(portfolio.summary.totalMarketValue)}
-          helper={`${portfolio.summary.holdingsCount} ETF holdings + ${portfolio.summary.manualAssetsCount} manual assets`}
+          helper={t("dashboard.helper.holdingsCount", {
+            holdings: portfolio.summary.holdingsCount,
+            manual: portfolio.summary.manualAssetsCount
+          })}
         />
         <StatCard
-          label="Total Unrealized P/L"
+          label={t("dashboard.stat.totalUnrealized")}
           value={formatSignedCurrency(portfolio.summary.totalUnrealizedPL)}
           tone={numberTone(portfolio.summary.totalUnrealizedPL)}
-          helper={`${portfolio.summary.totalUnrealizedReturnPct.toFixed(2)}% unrealized return`}
+          helper={t("dashboard.helper.unrealizedReturn", {
+            value: portfolio.summary.totalUnrealizedReturnPct.toFixed(2)
+          })}
         />
         <StatCard
-          label="Total Return"
+          label={t("dashboard.stat.totalReturn")}
           value={formatSignedCurrency(portfolio.summary.totalReturn)}
           tone={numberTone(portfolio.summary.totalReturn)}
-          helper="Unrealized P/L + received dividends"
+          helper={t("dashboard.helper.totalReturn")}
         />
         <StatCard
-          label="Today's Approximate Change"
+          label={t("dashboard.stat.todayReturn")}
           value={formatSignedCurrency(portfolio.summary.todayApproxChange)}
           tone={numberTone(portfolio.summary.todayApproxChange)}
-          helper={`Last refresh: ${formatDateTime(portfolio.summary.lastRefreshAt)}`}
+          helper={t("dashboard.helper.todayReturnPct", {
+            value: portfolio.summary.todayReturnPct.toFixed(2)
+          })}
         />
       </section>
 
       <section className="panel">
-        <h3>Allocation Summary</h3>
-        <p className="muted">By asset type and region based on latest cached prices.</p>
+        <h3>{t("dashboard.alloc.title")}</h3>
+        <p className="muted">{t("dashboard.alloc.subtitle")}</p>
         <div className="two-col">
-          <AllocationBars title="By Asset Type" buckets={portfolio.allocations.byAssetType} />
-          <AllocationBars title="By Region" buckets={portfolio.allocations.byRegion} />
+          <AllocationBars title={t("dashboard.alloc.byAsset")} buckets={portfolio.allocations.byAssetType} />
+          <AllocationBars title={t("dashboard.alloc.byRegion")} buckets={portfolio.allocations.byRegion} />
         </div>
       </section>
 
       <section className="panel">
-        <h3>Recent Dividend Summary</h3>
+        <h3>{t("dashboard.dividend.title")}</h3>
         <p className="muted">
-          {recentDividendCount} recent entries. Total dividends received: {formatCurrency(dividends?.summary.totalReceived ?? 0)}
+          {t("dashboard.dividend.subtitle", {
+            count: recentDividendCount,
+            value: formatCurrency(dividends?.summary.totalReceived ?? 0)
+          })}
         </p>
         {portfolio.recentDividends.length === 0 ? (
-          <p className="muted">No dividend records yet.</p>
+          <p className="muted">{t("dashboard.dividend.empty")}</p>
         ) : (
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Symbol</th>
-                  <th>Ex-Date</th>
-                  <th>Payment Date</th>
-                  <th>Per Unit</th>
-                  <th>Received</th>
+                  <th>{t("dashboard.table.symbol")}</th>
+                  <th>{t("dashboard.table.exDate")}</th>
+                  <th>{t("dashboard.table.paymentDate")}</th>
+                  <th>{t("dashboard.table.perUnit")}</th>
+                  <th>{t("dashboard.table.received")}</th>
                 </tr>
               </thead>
               <tbody>

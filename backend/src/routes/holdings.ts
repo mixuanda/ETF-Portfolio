@@ -6,6 +6,7 @@ import {
   listHoldings,
   updateHolding
 } from "../services/portfolioService.js";
+import { syncFirebaseProgramSafely } from "../services/firebaseSyncHook.js";
 import { createHoldingSchema, updateHoldingSchema } from "../validation/schemas.js";
 import { parseId, toValidationMessage } from "../utils/api.js";
 
@@ -15,10 +16,11 @@ router.get("/holdings", (_req, res) => {
   res.json(listHoldings());
 });
 
-router.post("/holdings", (req, res) => {
+router.post("/holdings", async (req, res) => {
   try {
     const payload = createHoldingSchema.parse(req.body) as Parameters<typeof createHolding>[0];
     const holding = createHolding(payload);
+    await syncFirebaseProgramSafely("create holding");
     res.status(201).json(holding);
   } catch (error) {
     if (error instanceof ZodError) {
@@ -38,7 +40,7 @@ router.post("/holdings", (req, res) => {
   }
 });
 
-router.patch("/holdings/:id", (req, res) => {
+router.patch("/holdings/:id", async (req, res) => {
   try {
     const id = parseId(req.params.id);
     const payload = updateHoldingSchema.parse(req.body);
@@ -49,6 +51,7 @@ router.patch("/holdings/:id", (req, res) => {
       return;
     }
 
+    await syncFirebaseProgramSafely("update holding");
     res.json(updated);
   } catch (error) {
     if (error instanceof ZodError) {
@@ -73,7 +76,7 @@ router.patch("/holdings/:id", (req, res) => {
   }
 });
 
-router.delete("/holdings/:id", (req, res) => {
+router.delete("/holdings/:id", async (req, res) => {
   try {
     const id = parseId(req.params.id);
     const removed = deleteHolding(id);
@@ -81,6 +84,7 @@ router.delete("/holdings/:id", (req, res) => {
       res.status(404).json({ message: "Holding not found." });
       return;
     }
+    await syncFirebaseProgramSafely("delete holding");
     res.status(204).send();
   } catch (error) {
     if (error instanceof Error && error.message === "Invalid id parameter") {

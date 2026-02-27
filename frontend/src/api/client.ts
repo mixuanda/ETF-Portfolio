@@ -133,6 +133,36 @@ export const api = {
       method: "POST"
     }),
 
+  getFirebaseProgramStatus: () =>
+    request<{
+      enabled: boolean;
+      configured: boolean;
+      projectId: string | null;
+      portfolioId: string;
+      restoreOnBoot: boolean;
+    }>("/api/firebase/status"),
+
+  syncFirebaseProgram: () =>
+    request<{
+      syncedAt: string;
+      projectId: string;
+      portfolioId: string;
+      trackedSymbolCount: number;
+      purchaseCount: number;
+      transactionCount: number;
+    }>("/api/firebase/sync", {
+      method: "POST"
+    }),
+
+  restoreFirebaseProgram: () =>
+    request<{
+      restored: boolean;
+      restoredAt: string | null;
+      reason?: string;
+    }>("/api/firebase/restore", {
+      method: "POST"
+    }),
+
   createHolding: (body: HoldingInput) =>
     request<HoldingWithMetrics>("/api/holdings", {
       method: "POST",

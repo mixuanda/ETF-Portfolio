@@ -8,3 +8,5 @@ frontend/.vite/
 .DS_Store
 .vercel/
 .vercel
+.env
+.env.*

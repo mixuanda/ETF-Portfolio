@@ -57,6 +57,45 @@ function ensureInstrumentCatalogBaseline(): void {
   `);
 }
 
+function ensureInstrumentCatalogCorrections(): void {
+  db.exec(`
+    INSERT INTO instruments (
+      symbol,
+      name_en,
+      name_zh,
+      asset_type,
+      issuer,
+      currency,
+      region,
+      search_keywords,
+      is_active,
+      updated_at
+    ) VALUES (
+      '03417',
+      'Global X Hang Seng TECH Covered Call Active ETF',
+      'Global X 恒生科技備兌認購期權主動型ETF',
+      'equity etf',
+      'Mirae Asset Global Investments (Hong Kong) Limited',
+      'HKD',
+      'Hong Kong',
+      'covered call options income tech 02006 legacy',
+      1,
+      CURRENT_TIMESTAMP
+    )
+    ON CONFLICT(symbol)
+    DO UPDATE SET
+      is_active = 1,
+      updated_at = CURRENT_TIMESTAMP
+  `);
+
+  db.exec(`
+    UPDATE instruments
+    SET is_active = 0,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE symbol = '02006'
+  `);
+}
+
 export function initializeDatabase(options?: { seed?: boolean }): {
   seeded: boolean;
 } {
@@ -64,6 +103,7 @@ export function initializeDatabase(options?: { seed?: boolean }): {
   runSqlFile(instrumentsPath);
   ensureSchemaCompatibility();
   ensureInstrumentCatalogBaseline();
+  ensureInstrumentCatalogCorrections();
 
   let seeded = false;
   const shouldSeed = Boolean(options?.seed);

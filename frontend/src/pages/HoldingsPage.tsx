@@ -8,6 +8,7 @@ import type {
 import { api } from "../api/client";
 import { RefreshPanel } from "../components/RefreshPanel";
 import { useRefreshPrices } from "../hooks/useRefreshPrices";
+import { useI18n } from "../i18n/provider";
 import {
   formatCurrency,
   formatDateTime,
@@ -96,6 +97,7 @@ function instrumentDisplayName(item: InstrumentSearchResult): string {
 }
 
 export function HoldingsPage(): JSX.Element {
+  const { t } = useI18n();
   const [data, setData] = useState<HoldingsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -122,11 +124,11 @@ export function HoldingsPage(): JSX.Element {
       const response = await api.getHoldings();
       setData(response);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Failed to load holdings");
+      setError(loadError instanceof Error ? loadError.message : t("common.notAvailable"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void loadData();
@@ -179,8 +181,8 @@ export function HoldingsPage(): JSX.Element {
   const displayedRefreshMessage =
     refreshStatus === "idle"
       ? effectiveStatus === "failed" || effectiveStatus === "partial_success"
-        ? data?.lastRefreshError ?? "Latest refresh failed. Showing previous cached snapshot data."
-        : "Holdings loaded from cached snapshot. Click Refresh Prices for delayed quote updates."
+        ? data?.lastRefreshError ?? t("holdings.refreshFailedFallback")
+        : t("holdings.refreshIdle")
       : refreshMessage;
 
   const totals = useMemo(() => {
@@ -197,6 +199,10 @@ export function HoldingsPage(): JSX.Element {
       unrealized: allPositions.reduce((acc, item) => acc + item.unrealizedPL, 0)
     };
   }, [data]);
+
+  function transactionTypeLabel(value: TransactionType): string {
+    return value === "SELL" ? t("holdings.transaction.sell") : t("holdings.transaction.buy");
+  }
 
   function clearSelection(): void {
     setSelectedInstrument(null);
@@ -230,13 +236,15 @@ export function HoldingsPage(): JSX.Element {
         symbol: selectedInstrument.symbol,
         notes: watchlistNote.trim()
       });
-      setSuccessMessage(`${selectedInstrument.symbol} is now tracked in watchlist.`);
+      setSuccessMessage(t("holdings.success.watchlistAdded", { symbol: selectedInstrument.symbol }));
       clearSelection();
       setSearchQuery("");
       setSearchResults([]);
       await loadData();
     } catch (submitError) {
-      setFormError(submitError instanceof Error ? submitError.message : "Unable to add to watchlist");
+      setFormError(
+        submitError instanceof Error ? submitError.message : t("holdings.error.addWatchlist")
+      );
     }
   }
 
@@ -253,11 +261,11 @@ export function HoldingsPage(): JSX.Element {
     const price = Number(firstBuyForm.price);
 
     if (!Number.isFinite(quantity) || quantity <= 0) {
-      setFormError("Quantity must be greater than zero.");
+      setFormError(t("holdings.error.quantityPositive"));
       return;
     }
     if (!Number.isFinite(price) || price < 0) {
-      setFormError("Buy price must be a valid non-negative number.");
+      setFormError(t("holdings.error.buyPriceInvalid"));
       return;
     }
 
@@ -272,14 +280,14 @@ export function HoldingsPage(): JSX.Element {
         notes: firstBuyForm.notes.trim()
       });
 
-      setSuccessMessage(`Added BUY transaction for ${selectedInstrument.symbol}.`);
+      setSuccessMessage(t("holdings.success.firstBuyAdded", { symbol: selectedInstrument.symbol }));
       clearSelection();
       setSearchQuery("");
       setSearchResults([]);
       await loadData();
     } catch (submitError) {
       setFormError(
-        submitError instanceof Error ? submitError.message : "Unable to create transaction"
+        submitError instanceof Error ? submitError.message : t("holdings.error.createTransaction")
       );
     }
   }
@@ -312,19 +320,19 @@ export function HoldingsPage(): JSX.Element {
     const fee = Number(transactionForm.fee || "0");
 
     if (!transactionForm.symbol) {
-      setFormError("Please choose a symbol first.");
+      setFormError(t("holdings.error.chooseSymbol"));
       return;
     }
     if (!Number.isFinite(quantity) || quantity <= 0) {
-      setFormError("Quantity must be greater than zero.");
+      setFormError(t("holdings.error.quantityPositive"));
       return;
     }
     if (!Number.isFinite(price) || price < 0) {
-      setFormError("Price must be a valid non-negative number.");
+      setFormError(t("holdings.error.priceInvalid"));
       return;
     }
     if (!Number.isFinite(fee) || fee < 0) {
-      setFormError("Fee must be a valid non-negative number.");
+      setFormError(t("holdings.error.feeInvalid"));
       return;
     }
 
@@ -340,19 +348,22 @@ export function HoldingsPage(): JSX.Element {
       });
 
       setSuccessMessage(
-        `Added ${transactionForm.transactionType} transaction for ${transactionForm.symbol}.`
+        t("holdings.success.transactionAdded", {
+          type: transactionTypeLabel(transactionForm.transactionType),
+          symbol: transactionForm.symbol
+        })
       );
       setTransactionForm(defaultTransactionForm);
       await loadData();
     } catch (submitError) {
       setFormError(
-        submitError instanceof Error ? submitError.message : "Unable to create transaction"
+        submitError instanceof Error ? submitError.message : t("holdings.error.createTransaction")
       );
     }
   }
 
   async function handleDeleteHolding(id: number): Promise<void> {
-    if (!window.confirm("Delete this purchased holding summary?")) {
+    if (!window.confirm(t("holdings.confirm.deleteHolding"))) {
       return;
     }
     try {
@@ -361,12 +372,12 @@ export function HoldingsPage(): JSX.Element {
       await api.deleteHolding(id);
       await loadData();
     } catch (deleteError) {
-      setFormError(deleteError instanceof Error ? deleteError.message : "Unable to delete holding");
+      setFormError(deleteError instanceof Error ? deleteError.message : t("holdings.error.deleteHolding"));
     }
   }
 
   async function handleDeleteWatchlist(id: number): Promise<void> {
-    if (!window.confirm("Remove this symbol from watchlist?")) {
+    if (!window.confirm(t("holdings.confirm.removeWatchlist"))) {
       return;
     }
 
@@ -377,7 +388,7 @@ export function HoldingsPage(): JSX.Element {
       await loadData();
     } catch (deleteError) {
       setFormError(
-        deleteError instanceof Error ? deleteError.message : "Unable to remove watchlist item"
+        deleteError instanceof Error ? deleteError.message : t("holdings.error.removeWatchlist")
       );
     }
   }
@@ -392,7 +403,7 @@ export function HoldingsPage(): JSX.Element {
     const manualPrice = Number(manualForm.manualPrice);
 
     if (!manualForm.code.trim() || !manualForm.name.trim()) {
-      setFormError("Manual asset code and name are required.");
+      setFormError(t("holdings.error.manualRequired"));
       return;
     }
 
@@ -404,7 +415,7 @@ export function HoldingsPage(): JSX.Element {
       !Number.isFinite(manualPrice) ||
       manualPrice < 0
     ) {
-      setFormError("Quantity, average cost, and manual price must be valid non-negative numbers.");
+      setFormError(t("holdings.error.manualNumericInvalid"));
       return;
     }
 
@@ -426,21 +437,21 @@ export function HoldingsPage(): JSX.Element {
     try {
       if (editingManualId) {
         await api.updateManualAsset(editingManualId, payload);
-        setSuccessMessage("Manual product updated.");
+        setSuccessMessage(t("holdings.success.manualUpdated"));
       } else {
         await api.createManualAsset(payload);
-        setSuccessMessage("Manual product added.");
+        setSuccessMessage(t("holdings.success.manualAdded"));
       }
       setManualForm(defaultManualAssetForm);
       setEditingManualId(null);
       await loadData();
     } catch (submitError) {
-      setFormError(submitError instanceof Error ? submitError.message : "Unable to save manual asset");
+      setFormError(submitError instanceof Error ? submitError.message : t("holdings.error.saveManual"));
     }
   }
 
   async function handleDeleteManualAsset(id: number): Promise<void> {
-    if (!window.confirm("Delete this manual asset?")) {
+    if (!window.confirm(t("holdings.confirm.deleteManual"))) {
       return;
     }
 
@@ -451,26 +462,27 @@ export function HoldingsPage(): JSX.Element {
       await loadData();
     } catch (deleteError) {
       setFormError(
-        deleteError instanceof Error ? deleteError.message : "Unable to delete manual asset"
+        deleteError instanceof Error ? deleteError.message : t("holdings.error.deleteManual")
       );
     }
   }
 
   if (loading) {
-    return <p>Loading holdings...</p>;
+    return <p>{t("common.loadingHoldings")}</p>;
   }
 
   if (error || !data) {
-    return <p className="error">{error ?? "Holdings data unavailable"}</p>;
+    return <p className="error">{error ?? t("common.notAvailable")}</p>;
   }
 
   return (
     <section className="page-grid">
       <div className="page-header">
-        <h2>Holdings</h2>
+        <h2>{t("holdings.title")}</h2>
         <p className="muted">
-          Search-first workflow for HK ETFs with transaction-ready tracking. Current purchased value{" "}
-          {formatCurrency(totals.marketValue)}.
+          {t("holdings.subtitle", {
+            value: formatCurrency(totals.marketValue)
+          })}
         </p>
       </div>
 
@@ -487,16 +499,14 @@ export function HoldingsPage(): JSX.Element {
       {successMessage ? <p className="success">{successMessage}</p> : null}
 
       <section className="panel">
-        <h3>Search and Add</h3>
-        <p className="muted">
-          Step 1: search by symbol or English/Chinese name. Step 2: choose bought or not bought.
-        </p>
+        <h3>{t("holdings.searchAdd")}</h3>
+        <p className="muted">{t("holdings.searchAddDesc")}</p>
 
         <label>
-          Search HK ETF
+          {t("holdings.searchLabel")}
           <input
             value={searchQuery}
-            placeholder="Try 03010, 02100, Hang Seng, 恒生"
+            placeholder={t("holdings.searchPlaceholder")}
             onChange={(event) => {
               setSearchQuery(event.target.value);
               clearSelection();
@@ -543,12 +553,12 @@ export function HoldingsPage(): JSX.Element {
           />
         </label>
 
-        {searchLoading ? <p className="muted">Searching instruments...</p> : null}
+        {searchLoading ? <p className="muted">{t("holdings.searching")}</p> : null}
 
         {searchOpen && searchQuery.trim() ? (
           <div className="search-results-wrap">
             {searchResults.length === 0 ? (
-              <p className="muted">No instrument matches. Try a shorter keyword.</p>
+              <p className="muted">{t("holdings.searchNoMatch")}</p>
             ) : (
               <ul className="search-results">
                 {searchResults.map((item, index) => (
@@ -579,7 +589,7 @@ export function HoldingsPage(): JSX.Element {
             </h4>
             {selectedInstrument.nameZh ? <p className="muted">{selectedInstrument.nameZh}</p> : null}
             <p className="muted">
-              {selectedInstrument.assetType} · {selectedInstrument.issuer || "Issuer N/A"} ·{" "}
+              {selectedInstrument.assetType} · {selectedInstrument.issuer || t("holdings.issuerNA")} ·{" "}
               {selectedInstrument.currency} · {selectedInstrument.region}
             </p>
 
@@ -589,17 +599,17 @@ export function HoldingsPage(): JSX.Element {
                 className="btn btn--primary"
                 onClick={() => setPurchaseDecision("yes")}
               >
-                Yes, already bought
+                {t("holdings.boughtYes")}
               </button>
               <button
                 type="button"
                 className="btn btn--ghost"
                 onClick={() => setPurchaseDecision("no")}
               >
-                No, track only
+                {t("holdings.boughtNo")}
               </button>
               <button type="button" className="btn btn--ghost" onClick={clearSelection}>
-                Clear
+                {t("holdings.clear")}
               </button>
             </div>
           </div>
@@ -607,18 +617,18 @@ export function HoldingsPage(): JSX.Element {
 
         {selectedInstrument && purchaseDecision === "no" ? (
           <form className="data-form" onSubmit={(event) => void handleAddToWatchlist(event)}>
-            <h4>Add to watchlist</h4>
+            <h4>{t("holdings.watchlistAdd")}</h4>
             <label>
-              Optional note
+              {t("holdings.optionalNote")}
               <input
                 value={watchlistNote}
                 onChange={(event) => setWatchlistNote(event.target.value)}
-                placeholder="e.g. waiting for pullback"
+                placeholder={t("holdings.notePlaceholder")}
               />
             </label>
             <div className="row-actions">
               <button type="submit" className="btn btn--primary">
-                Save as tracked only
+                {t("holdings.saveTrackedOnly")}
               </button>
             </div>
           </form>
@@ -626,10 +636,10 @@ export function HoldingsPage(): JSX.Element {
 
         {selectedInstrument && purchaseDecision === "yes" ? (
           <form className="data-form" onSubmit={(event) => void handleFirstBuySubmit(event)}>
-            <h4>Record first BUY</h4>
+            <h4>{t("holdings.recordFirstBuy")}</h4>
             <div className="form-grid">
               <label>
-                Quantity
+                {t("holdings.quantity")}
                 <input
                   type="number"
                   min="0"
@@ -642,7 +652,7 @@ export function HoldingsPage(): JSX.Element {
                 />
               </label>
               <label>
-                Buy Price
+                {t("holdings.buyPrice")}
                 <input
                   type="number"
                   min="0"
@@ -655,7 +665,7 @@ export function HoldingsPage(): JSX.Element {
                 />
               </label>
               <label>
-                Trade Date (optional)
+                {t("holdings.tradeDateOptional")}
                 <input
                   type="date"
                   value={firstBuyForm.tradeDate}
@@ -665,7 +675,7 @@ export function HoldingsPage(): JSX.Element {
                 />
               </label>
               <label className="full-width">
-                Note (optional)
+                {t("holdings.noteOptional")}
                 <textarea
                   rows={2}
                   value={firstBuyForm.notes}
@@ -677,7 +687,7 @@ export function HoldingsPage(): JSX.Element {
             </div>
             <div className="row-actions">
               <button type="submit" className="btn btn--primary">
-                Save purchased holding
+                {t("holdings.savePurchased")}
               </button>
             </div>
           </form>
@@ -685,20 +695,20 @@ export function HoldingsPage(): JSX.Element {
       </section>
 
       <section className="panel">
-        <h3>Watchlist / Tracked Instruments</h3>
-        <p className="muted">Tracked ETFs with no purchased quantity yet.</p>
+        <h3>{t("holdings.watchlistTitle")}</h3>
+        <p className="muted">{t("holdings.watchlistDesc")}</p>
 
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Symbol</th>
-                <th>Name</th>
-                <th>Type</th>
-                <th>Last Price</th>
-                <th>Price Source</th>
-                <th>Note</th>
-                <th>Actions</th>
+                <th>{t("holdings.table.symbol")}</th>
+                <th>{t("holdings.table.name")}</th>
+                <th>{t("holdings.table.type")}</th>
+                <th>{t("holdings.table.lastPrice")}</th>
+                <th>{t("holdings.table.priceSource")}</th>
+                <th>{t("holdings.table.note")}</th>
+                <th>{t("holdings.table.actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -715,7 +725,7 @@ export function HoldingsPage(): JSX.Element {
                   <td>
                     {item.priceStatus === "cached"
                       ? `${item.priceProvider ?? "cached"} (${formatDateTime(item.priceAsOf)})`
-                      : "No cached quote"}
+                      : t("holdings.noCachedQuote")}
                   </td>
                   <td>{item.notes || "-"}</td>
                   <td>
@@ -731,14 +741,14 @@ export function HoldingsPage(): JSX.Element {
                           })
                         }
                       >
-                        Add transaction
+                        {t("holdings.addTransaction")}
                       </button>
                       <button
                         type="button"
                         className="btn btn--ghost"
                         onClick={() => void handleDeleteWatchlist(item.id)}
                       >
-                        Remove
+                        {t("holdings.remove")}
                       </button>
                     </div>
                   </td>
@@ -749,29 +759,29 @@ export function HoldingsPage(): JSX.Element {
         </div>
 
         {data.watchlist.length === 0 ? (
-          <p className="muted">No tracked-only ETFs yet. Use search above to add one.</p>
+          <p className="muted">{t("holdings.noWatchlist")}</p>
         ) : null}
       </section>
 
       <section className="panel">
-        <h3>Purchased Holdings</h3>
-        <p className="muted">Unrealized P/L: {formatSignedCurrency(totals.unrealized)}</p>
+        <h3>{t("holdings.purchasedTitle")}</h3>
+        <p className="muted">{t("holdings.unrealized", { value: formatSignedCurrency(totals.unrealized) })}</p>
 
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Symbol</th>
-                <th>Name</th>
-                <th>Type</th>
-                <th>Qty</th>
-                <th>Avg Cost</th>
-                <th>Current Price</th>
-                <th>Price Source</th>
-                <th>Market Value</th>
-                <th>Unrealized P/L</th>
-                <th>Return %</th>
-                <th>Actions</th>
+                <th>{t("holdings.table.symbol")}</th>
+                <th>{t("holdings.table.name")}</th>
+                <th>{t("holdings.table.type")}</th>
+                <th>{t("holdings.table.qty")}</th>
+                <th>{t("holdings.table.avgCost")}</th>
+                <th>{t("holdings.table.currentPrice")}</th>
+                <th>{t("holdings.table.priceSource")}</th>
+                <th>{t("holdings.table.marketValue")}</th>
+                <th>{t("holdings.table.unrealized")}</th>
+                <th>{t("holdings.table.returnPct")}</th>
+                <th>{t("holdings.table.actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -790,7 +800,7 @@ export function HoldingsPage(): JSX.Element {
                   <td>
                     {holding.priceStatus === "cached"
                       ? `${holding.priceProvider ?? "cached"} (${formatDateTime(holding.priceAsOf)})`
-                      : "No cached quote"}
+                      : t("holdings.noCachedQuote")}
                   </td>
                   <td>{formatCurrency(holding.marketValue, holding.currency)}</td>
                   <td className={`tone-${numberTone(holding.unrealizedPL)}`}>
@@ -812,14 +822,14 @@ export function HoldingsPage(): JSX.Element {
                           })
                         }
                       >
-                        Add transaction
+                        {t("holdings.addTransaction")}
                       </button>
                       <button
                         type="button"
                         className="btn btn--danger"
                         onClick={() => void handleDeleteHolding(holding.id)}
                       >
-                        Delete
+                        {t("holdings.delete")}
                       </button>
                     </div>
                   </td>
@@ -830,15 +840,15 @@ export function HoldingsPage(): JSX.Element {
         </div>
 
         {data.holdings.length === 0 ? (
-          <p className="muted">No purchased holdings yet. Record a BUY transaction to start.</p>
+          <p className="muted">{t("holdings.noPurchased")}</p>
         ) : null}
 
         {transactionForm.symbol ? (
           <form className="data-form" onSubmit={(event) => void handleTransactionSubmit(event)}>
-            <h4>Add transaction for {transactionForm.symbol}</h4>
+            <h4>{t("holdings.addTransactionFor", { symbol: transactionForm.symbol })}</h4>
             <div className="form-grid">
               <label>
-                Transaction Type
+                {t("holdings.transactionType")}
                 <select
                   value={transactionForm.transactionType}
                   onChange={(event) =>
@@ -848,12 +858,12 @@ export function HoldingsPage(): JSX.Element {
                     }))
                   }
                 >
-                  <option value="BUY">BUY</option>
-                  <option value="SELL">SELL</option>
+                  <option value="BUY">{t("holdings.transaction.buy")}</option>
+                  <option value="SELL">{t("holdings.transaction.sell")}</option>
                 </select>
               </label>
               <label>
-                Quantity
+                {t("holdings.quantity")}
                 <input
                   type="number"
                   min="0"
@@ -866,7 +876,7 @@ export function HoldingsPage(): JSX.Element {
                 />
               </label>
               <label>
-                Price
+                {t("holdings.price")}
                 <input
                   type="number"
                   min="0"
@@ -879,7 +889,7 @@ export function HoldingsPage(): JSX.Element {
                 />
               </label>
               <label>
-                Fee
+                {t("holdings.fee")}
                 <input
                   type="number"
                   min="0"
@@ -891,7 +901,7 @@ export function HoldingsPage(): JSX.Element {
                 />
               </label>
               <label>
-                Trade Date (optional)
+                {t("holdings.tradeDateOptional")}
                 <input
                   type="date"
                   value={transactionForm.tradeDate}
@@ -901,7 +911,7 @@ export function HoldingsPage(): JSX.Element {
                 />
               </label>
               <label className="full-width">
-                Notes
+                {t("holdings.notes")}
                 <textarea
                   rows={2}
                   value={transactionForm.notes}
@@ -913,14 +923,14 @@ export function HoldingsPage(): JSX.Element {
             </div>
             <div className="row-actions">
               <button type="submit" className="btn btn--primary">
-                Save Transaction
+                {t("holdings.saveTransaction")}
               </button>
               <button
                 type="button"
                 className="btn btn--ghost"
                 onClick={() => setTransactionForm(defaultTransactionForm)}
               >
-                Cancel
+                {t("holdings.cancel")}
               </button>
             </div>
           </form>
@@ -930,13 +940,13 @@ export function HoldingsPage(): JSX.Element {
           <table>
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Symbol</th>
-                <th>Type</th>
-                <th>Quantity</th>
-                <th>Price</th>
-                <th>Fee</th>
-                <th>Notes</th>
+                <th>{t("holdings.table.date")}</th>
+                <th>{t("holdings.table.symbol")}</th>
+                <th>{t("holdings.table.type")}</th>
+                <th>{t("holdings.table.quantity")}</th>
+                <th>{t("holdings.table.price")}</th>
+                <th>{t("holdings.table.fee")}</th>
+                <th>{t("holdings.table.notes")}</th>
               </tr>
             </thead>
             <tbody>
@@ -944,7 +954,7 @@ export function HoldingsPage(): JSX.Element {
                 <tr key={transaction.id}>
                   <td>{transaction.tradeDate}</td>
                   <td>{transaction.symbol}</td>
-                  <td>{transaction.transactionType}</td>
+                  <td>{transactionTypeLabel(transaction.transactionType)}</td>
                   <td>{transaction.quantity}</td>
                   <td>{formatCurrency(transaction.price)}</td>
                   <td>{formatCurrency(transaction.fee)}</td>
@@ -955,29 +965,29 @@ export function HoldingsPage(): JSX.Element {
           </table>
         </div>
         {data.transactions.length === 0 ? (
-          <p className="muted">No transactions recorded yet.</p>
+          <p className="muted">{t("holdings.noTransactions")}</p>
         ) : null}
       </section>
 
       <section className="panel">
-        <h3>Manual Tracked Products</h3>
-        <p className="muted">Use this section for products where price/NAV is entered manually.</p>
+        <h3>{t("holdings.manualTitle")}</h3>
+        <p className="muted">{t("holdings.manualDesc")}</p>
 
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Code</th>
-                <th>Name</th>
-                <th>Type</th>
-                <th>Qty</th>
-                <th>Avg Cost</th>
-                <th>Manual Price/NAV</th>
-                <th>Price Source</th>
-                <th>Market Value</th>
-                <th>Unrealized P/L</th>
-                <th>Return %</th>
-                <th>Actions</th>
+                <th>{t("holdings.table.code")}</th>
+                <th>{t("holdings.table.name")}</th>
+                <th>{t("holdings.table.type")}</th>
+                <th>{t("holdings.table.qty")}</th>
+                <th>{t("holdings.table.avgCost")}</th>
+                <th>{t("holdings.table.manualPrice")}</th>
+                <th>{t("holdings.table.priceSource")}</th>
+                <th>{t("holdings.table.marketValue")}</th>
+                <th>{t("holdings.table.unrealized")}</th>
+                <th>{t("holdings.table.returnPct")}</th>
+                <th>{t("holdings.table.actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -1020,14 +1030,14 @@ export function HoldingsPage(): JSX.Element {
                           });
                         }}
                       >
-                        Edit
+                        {t("dividends.action.edit")}
                       </button>
                       <button
                         type="button"
                         className="btn btn--danger"
                         onClick={() => void handleDeleteManualAsset(asset.id)}
                       >
-                        Delete
+                        {t("holdings.delete")}
                       </button>
                     </div>
                   </td>
@@ -1037,14 +1047,14 @@ export function HoldingsPage(): JSX.Element {
           </table>
         </div>
         {data.manualAssets.length === 0 ? (
-          <p className="muted">No manual products yet. Add one below if needed.</p>
+          <p className="muted">{t("holdings.noManual")}</p>
         ) : null}
 
         <form className="data-form" onSubmit={(event) => void handleManualSubmit(event)}>
-          <h4>{editingManualId ? "Edit manual product" : "Add manual product"}</h4>
+          <h4>{editingManualId ? t("holdings.editManual") : t("holdings.addManual")}</h4>
           <div className="form-grid">
             <label>
-              Code
+              {t("holdings.table.code")}
               <input
                 value={manualForm.code}
                 onChange={(event) =>
@@ -1054,7 +1064,7 @@ export function HoldingsPage(): JSX.Element {
               />
             </label>
             <label>
-              Asset Name
+              {t("holdings.assetName")}
               <input
                 value={manualForm.name}
                 onChange={(event) => setManualForm((prev) => ({ ...prev, name: event.target.value }))}
@@ -1062,7 +1072,7 @@ export function HoldingsPage(): JSX.Element {
               />
             </label>
             <label>
-              Asset Type
+              {t("holdings.assetType")}
               <input
                 value={manualForm.assetType}
                 onChange={(event) =>
@@ -1072,7 +1082,7 @@ export function HoldingsPage(): JSX.Element {
               />
             </label>
             <label>
-              Quantity
+              {t("holdings.quantity")}
               <input
                 type="number"
                 min="0"
@@ -1083,7 +1093,7 @@ export function HoldingsPage(): JSX.Element {
               />
             </label>
             <label>
-              Average Cost
+              {t("holdings.averageCost")}
               <input
                 type="number"
                 min="0"
@@ -1096,7 +1106,7 @@ export function HoldingsPage(): JSX.Element {
               />
             </label>
             <label>
-              Manual Price / NAV
+              {t("holdings.manualPrice")}
               <input
                 type="number"
                 min="0"
@@ -1109,7 +1119,7 @@ export function HoldingsPage(): JSX.Element {
               />
             </label>
             <label>
-              Currency
+              {t("holdings.currency")}
               <input
                 value={manualForm.currency}
                 onChange={(event) =>
@@ -1119,14 +1129,14 @@ export function HoldingsPage(): JSX.Element {
               />
             </label>
             <label>
-              Region
+              {t("holdings.region")}
               <input
                 value={manualForm.region}
                 onChange={(event) => setManualForm((prev) => ({ ...prev, region: event.target.value }))}
               />
             </label>
             <label>
-              Strategy Label
+              {t("holdings.strategyLabel")}
               <input
                 value={manualForm.strategyLabel}
                 onChange={(event) =>
@@ -1135,25 +1145,25 @@ export function HoldingsPage(): JSX.Element {
               />
             </label>
             <label>
-              Risk Group
+              {t("holdings.riskGroup")}
               <select
                 value={manualForm.riskGroup}
                 onChange={(event) => setManualForm((prev) => ({ ...prev, riskGroup: event.target.value }))}
               >
-                <option value="growth">growth</option>
-                <option value="defensive">defensive</option>
-                <option value="income">income</option>
+                <option value="growth">{t("holdings.risk.growth")}</option>
+                <option value="defensive">{t("holdings.risk.defensive")}</option>
+                <option value="income">{t("holdings.risk.income")}</option>
               </select>
             </label>
             <label>
-              Tags (comma separated)
+              {t("holdings.tags")}
               <input
                 value={manualForm.tags}
                 onChange={(event) => setManualForm((prev) => ({ ...prev, tags: event.target.value }))}
               />
             </label>
             <label className="full-width">
-              Notes
+              {t("holdings.notes")}
               <textarea
                 rows={2}
                 value={manualForm.notes}
@@ -1163,7 +1173,7 @@ export function HoldingsPage(): JSX.Element {
           </div>
           <div className="row-actions">
             <button type="submit" className="btn btn--primary">
-              {editingManualId ? "Update Manual Product" : "Add Manual Product"}
+              {editingManualId ? t("holdings.updateManual") : t("holdings.addManual")}
             </button>
             {editingManualId ? (
               <button
@@ -1174,7 +1184,7 @@ export function HoldingsPage(): JSX.Element {
                   setManualForm(defaultManualAssetForm);
                 }}
               >
-                Cancel Edit
+                {t("holdings.cancelEdit")}
               </button>
             ) : null}
           </div>

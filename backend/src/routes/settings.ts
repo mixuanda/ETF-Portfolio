@@ -2,6 +2,7 @@ import { Router } from "express";
 import { ZodError } from "zod";
 import { listTrackedSymbols } from "../services/portfolioService.js";
 import { getSettings, updateSettings } from "../services/settingsService.js";
+import { syncFirebaseProgramSafely } from "../services/firebaseSyncHook.js";
 import { updateSettingsSchema } from "../validation/schemas.js";
 import { toValidationMessage } from "../utils/api.js";
 
@@ -13,10 +14,11 @@ router.get("/settings", (_req, res) => {
   res.json({ settings, trackedSymbols });
 });
 
-router.patch("/settings", (req, res) => {
+router.patch("/settings", async (req, res) => {
   try {
     const payload = updateSettingsSchema.parse(req.body);
     const settings = updateSettings(payload);
+    await syncFirebaseProgramSafely("update settings");
     res.json(settings);
   } catch (error) {
     if (error instanceof ZodError) {

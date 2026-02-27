@@ -1,4 +1,5 @@
 import type { AllocationBucket } from "@portfolio/shared";
+import { useI18n } from "../i18n/provider";
 import { formatCurrency } from "../utils/format";
 
 interface AllocationBarsProps {
@@ -7,11 +8,13 @@ interface AllocationBarsProps {
 }
 
 export function AllocationBars({ title, buckets }: AllocationBarsProps): JSX.Element {
+  const { t } = useI18n();
+
   return (
     <section className="panel">
       <h3>{title}</h3>
       {buckets.length === 0 ? (
-        <p className="muted">No allocation data yet.</p>
+        <p className="muted">{t("allocation.empty")}</p>
       ) : (
         <div className="allocation-list">
           {buckets.map((bucket) => (

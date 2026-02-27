@@ -1,9 +1,17 @@
 const YAHOO_SYMBOL_OVERRIDES: Record<string, string> = {
-  // Add per-symbol overrides if provider formatting changes.
+  // Legacy-to-current symbol mapping overrides.
+  "02006": "3417.HK",
+  "02006.HK": "3417.HK",
+  "2006": "3417.HK",
+  "2006.HK": "3417.HK"
 };
 
 const HKEX_SYMBOL_OVERRIDES: Record<string, string> = {
-  // Add per-symbol overrides if HKEX code mapping changes.
+  // Legacy-to-current symbol mapping overrides.
+  "02006": "3417",
+  "02006.HK": "3417",
+  "2006": "3417",
+  "2006.HK": "3417"
 };
 
 function normalizeDigits(value: string): string {

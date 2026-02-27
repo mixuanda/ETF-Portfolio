@@ -6,6 +6,7 @@ import {
   listDividends,
   updateDividend
 } from "../services/portfolioService.js";
+import { syncFirebaseProgramSafely } from "../services/firebaseSyncHook.js";
 import { createDividendSchema, updateDividendSchema } from "../validation/schemas.js";
 import { parseId, toValidationMessage } from "../utils/api.js";
 
@@ -15,13 +16,14 @@ router.get("/dividends", (_req, res) => {
   res.json(listDividends());
 });
 
-router.post("/dividends", (req, res) => {
+router.post("/dividends", async (req, res) => {
   try {
     const payload = createDividendSchema.parse(req.body) as Parameters<typeof createDividend>[0];
     const created = createDividend({
       ...payload,
       exDividendDate: payload.exDividendDate ?? null
     });
+    await syncFirebaseProgramSafely("create dividend");
     res.status(201).json(created);
   } catch (error) {
     if (error instanceof ZodError) {
@@ -32,7 +34,7 @@ router.post("/dividends", (req, res) => {
   }
 });
 
-router.patch("/dividends/:id", (req, res) => {
+router.patch("/dividends/:id", async (req, res) => {
   try {
     const id = parseId(req.params.id);
     const payload = updateDividendSchema.parse(req.body);
@@ -41,6 +43,7 @@ router.patch("/dividends/:id", (req, res) => {
       res.status(404).json({ message: "Dividend record not found." });
       return;
     }
+    await syncFirebaseProgramSafely("update dividend");
     res.json(updated);
   } catch (error) {
     if (error instanceof ZodError) {
@@ -55,7 +58,7 @@ router.patch("/dividends/:id", (req, res) => {
   }
 });
 
-router.delete("/dividends/:id", (req, res) => {
+router.delete("/dividends/:id", async (req, res) => {
   try {
     const id = parseId(req.params.id);
     const removed = deleteDividend(id);
@@ -63,6 +66,7 @@ router.delete("/dividends/:id", (req, res) => {
       res.status(404).json({ message: "Dividend record not found." });
       return;
     }
+    await syncFirebaseProgramSafely("delete dividend");
     res.status(204).send();
   } catch (error) {
     if (error instanceof Error && error.message === "Invalid id parameter") {

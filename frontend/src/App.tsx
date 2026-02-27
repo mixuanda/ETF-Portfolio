@@ -1,21 +1,27 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { NavLink, Route, Routes } from "react-router-dom";
 import { api } from "./api/client";
+import type { AppLocale } from "./i18n/config";
+import { useI18n } from "./i18n/provider";
 import { AnalysisPage } from "./pages/AnalysisPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DividendsPage } from "./pages/DividendsPage";
 import { HoldingsPage } from "./pages/HoldingsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
-const links = [
-  { to: "/", label: "Dashboard" },
-  { to: "/holdings", label: "Holdings" },
-  { to: "/dividends", label: "Dividends" },
-  { to: "/analysis", label: "Analysis" },
-  { to: "/settings", label: "Settings / Data" }
-];
-
 function Navigation(): JSX.Element {
+  const { t } = useI18n();
+  const links = useMemo(
+    () => [
+      { to: "/", label: t("app.nav.dashboard") },
+      { to: "/holdings", label: t("app.nav.holdings") },
+      { to: "/dividends", label: t("app.nav.dividends") },
+      { to: "/analysis", label: t("app.nav.analysis") },
+      { to: "/settings", label: t("app.nav.settings") }
+    ],
+    [t]
+  );
+
   return (
     <nav className="app-nav">
       {links.map((link) => (
@@ -34,6 +40,7 @@ function Navigation(): JSX.Element {
 
 export default function App(): JSX.Element {
   const [demoModeEnabled, setDemoModeEnabled] = useState(false);
+  const { locale, setLocale, t } = useI18n();
 
   useEffect(() => {
     let active = true;
@@ -61,14 +68,26 @@ export default function App(): JSX.Element {
       <header className="app-header">
         {demoModeEnabled ? (
           <div className="global-warning-banner">
-            <strong>DEMO DATA</strong>
-            <span>NOT REAL MARKET DATA</span>
+            <strong>{t("app.demo.title")}</strong>
+            <span>{t("app.demo.subtitle")}</span>
           </div>
         ) : null}
-        <div>
-          <p className="eyebrow">Personal Use Portfolio Dashboard</p>
-          <h1>Hong Kong ETF Portfolio</h1>
-          <p className="muted">Read-only delayed quotes with manual refresh and local SQLite data.</p>
+
+        <div className="app-header__meta-row">
+          <div>
+            <p className="eyebrow">{t("app.header.eyebrow")}</p>
+            <h1>{t("app.header.title")}</h1>
+            <p className="muted">{t("app.header.subtitle")}</p>
+          </div>
+
+          <label className="locale-switcher">
+            <span>{t("lang.label")}</span>
+            <select value={locale} onChange={(event) => setLocale(event.target.value as AppLocale)}>
+              <option value="en">{t("lang.en")}</option>
+              <option value="zh-Hans">{t("lang.zh-Hans")}</option>
+              <option value="zh-Hant">{t("lang.zh-Hant")}</option>
+            </select>
+          </label>
         </div>
       </header>
 
