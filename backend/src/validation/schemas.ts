@@ -95,6 +95,11 @@ export const createTransactionSchema = z.object({
   price: z.number().finite().nonnegative(),
   feeMode: z.enum(["manual", "auto_hsbc_trade25"]).optional().default("manual"),
   fee: z.number().finite().nonnegative().optional().default(0),
+  brokerageFee: z.number().finite().nonnegative().optional(),
+  stampDuty: z.number().finite().nonnegative().optional(),
+  transactionLevy: z.number().finite().nonnegative().optional(),
+  tradingFee: z.number().finite().nonnegative().optional(),
+  otherFee: z.number().finite().nonnegative().optional(),
   tradeDate: dateSchema.optional().nullable(),
   notes: optionalTextSchema
 });

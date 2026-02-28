@@ -97,6 +97,11 @@ export interface TransactionInput {
   price: number;
   feeMode?: TransactionFeeMode;
   fee?: number;
+  brokerageFee?: number;
+  stampDuty?: number;
+  transactionLevy?: number;
+  tradingFee?: number;
+  otherFee?: number;
   tradeDate?: string | null;
   notes: string;
 }

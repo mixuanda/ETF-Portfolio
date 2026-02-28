@@ -33,11 +33,19 @@ interface ManualAssetFormState {
   notes: string;
 }
 
+interface FeeFormState {
+  brokerageFee: string;
+  stampDuty: string;
+  transactionLevy: string;
+  tradingFee: string;
+  otherFee: string;
+}
+
 interface FirstBuyFormState {
   quantity: string;
   price: string;
   feeMode: TransactionFeeMode;
-  fee: string;
+  fees: FeeFormState;
   tradeDate: string;
   notes: string;
 }
@@ -48,7 +56,7 @@ interface TransactionFormState {
   feeMode: TransactionFeeMode;
   quantity: string;
   price: string;
-  fee: string;
+  fees: FeeFormState;
   tradeDate: string;
   notes: string;
 }
@@ -73,11 +81,19 @@ const defaultManualAssetForm: ManualAssetFormState = {
   notes: ""
 };
 
+const defaultFeeForm: FeeFormState = {
+  brokerageFee: "0",
+  stampDuty: "0",
+  transactionLevy: "0",
+  tradingFee: "0",
+  otherFee: "0"
+};
+
 const defaultFirstBuyForm: FirstBuyFormState = {
   quantity: "",
   price: "",
   feeMode: "manual",
-  fee: "0",
+  fees: defaultFeeForm,
   tradeDate: "",
   notes: ""
 };
@@ -88,7 +104,7 @@ const defaultTransactionForm: TransactionFormState = {
   feeMode: "manual",
   quantity: "",
   price: "",
-  fee: "0",
+  fees: defaultFeeForm,
   tradeDate: "",
   notes: ""
 };
@@ -120,21 +136,122 @@ function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-function calculateAutoTrade25FeePreview(quantity: number, price: number): number {
-  if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(price) || price < 0) {
+function asNumber(value: string): number {
+  const trimmed = value.trim();
+  if (!trimmed) {
     return 0;
+  }
+  return Number(trimmed);
+}
+
+function sumFeeParts(input: {
+  brokerageFee: number;
+  stampDuty: number;
+  transactionLevy: number;
+  tradingFee: number;
+  otherFee: number;
+}): number {
+  return roundMoney(
+    input.brokerageFee +
+      input.stampDuty +
+      input.transactionLevy +
+      input.tradingFee +
+      input.otherFee
+  );
+}
+
+function manualFeeFromState(state: FeeFormState): {
+  brokerageFee: number;
+  stampDuty: number;
+  transactionLevy: number;
+  tradingFee: number;
+  otherFee: number;
+  total: number;
+} {
+  const brokerageFee = asNumber(state.brokerageFee);
+  const stampDuty = asNumber(state.stampDuty);
+  const transactionLevy = asNumber(state.transactionLevy);
+  const tradingFee = asNumber(state.tradingFee);
+  const otherFee = asNumber(state.otherFee);
+  const total = sumFeeParts({
+    brokerageFee,
+    stampDuty,
+    transactionLevy,
+    tradingFee,
+    otherFee
+  });
+
+  return {
+    brokerageFee,
+    stampDuty,
+    transactionLevy,
+    tradingFee,
+    otherFee,
+    total
+  };
+}
+
+function feePartsAreValid(input: {
+  brokerageFee: number;
+  stampDuty: number;
+  transactionLevy: number;
+  tradingFee: number;
+  otherFee: number;
+}): boolean {
+  return Object.values(input).every((value) => Number.isFinite(value) && value >= 0);
+}
+
+function calculateAutoTrade25FeePreview(quantity: number, price: number): {
+  brokerageFee: number;
+  stampDuty: number;
+  transactionLevy: number;
+  tradingFee: number;
+  otherFee: number;
+  total: number;
+} {
+  if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(price) || price < 0) {
+    return {
+      brokerageFee: 0,
+      stampDuty: 0,
+      transactionLevy: 0,
+      tradingFee: 0,
+      otherFee: 0,
+      total: 0
+    };
   }
 
   const amount = quantity * price;
   if (amount <= 0) {
-    return 0;
+    return {
+      brokerageFee: 0,
+      stampDuty: 0,
+      transactionLevy: 0,
+      tradingFee: 0,
+      otherFee: 0,
+      total: 0
+    };
   }
 
-  const brokerage = 25;
+  const brokerageFee = 0;
   const stampDuty = Math.ceil(amount * 0.001);
   const transactionLevy = roundMoney(amount * 0.0000285);
   const tradingFee = roundMoney(amount * 0.0000565);
-  return roundMoney(brokerage + stampDuty + transactionLevy + tradingFee);
+  const otherFee = 0;
+
+  return {
+    brokerageFee,
+    stampDuty,
+    transactionLevy,
+    tradingFee,
+    otherFee,
+    total: sumFeeParts({
+      brokerageFee,
+      stampDuty,
+      transactionLevy,
+      tradingFee,
+      otherFee
+    })
+  };
 }
 
 export function HoldingsPage(): JSX.Element {
@@ -251,11 +368,33 @@ export function HoldingsPage(): JSX.Element {
     return calculateAutoTrade25FeePreview(quantity, price);
   }, [transactionForm.price, transactionForm.quantity]);
 
+  const manualTransactionFeePreview = useMemo(
+    () => manualFeeFromState(transactionForm.fees),
+    [
+      transactionForm.fees.brokerageFee,
+      transactionForm.fees.stampDuty,
+      transactionForm.fees.transactionLevy,
+      transactionForm.fees.tradingFee,
+      transactionForm.fees.otherFee
+    ]
+  );
+
   const firstBuyAutoFeePreview = useMemo(() => {
     const quantity = Number(firstBuyForm.quantity);
     const price = Number(firstBuyForm.price);
     return calculateAutoTrade25FeePreview(quantity, price);
   }, [firstBuyForm.price, firstBuyForm.quantity]);
+
+  const manualFirstBuyFeePreview = useMemo(
+    () => manualFeeFromState(firstBuyForm.fees),
+    [
+      firstBuyForm.fees.brokerageFee,
+      firstBuyForm.fees.stampDuty,
+      firstBuyForm.fees.transactionLevy,
+      firstBuyForm.fees.tradingFee,
+      firstBuyForm.fees.otherFee
+    ]
+  );
 
   function transactionTypeLabel(value: TransactionType): string {
     return value === "SELL" ? t("holdings.transaction.sell") : t("holdings.transaction.buy");
@@ -269,21 +408,21 @@ export function HoldingsPage(): JSX.Element {
 
   function resetTransactionForm(): void {
     setEditingTransactionId(null);
-    setTransactionForm(defaultTransactionForm);
+    setTransactionForm({ ...defaultTransactionForm, fees: { ...defaultFeeForm } });
   }
 
   function clearSelection(): void {
     setSelectedInstrument(null);
     setPurchaseDecision(null);
     setWatchlistNote("");
-    setFirstBuyForm(defaultFirstBuyForm);
+    setFirstBuyForm({ ...defaultFirstBuyForm, fees: { ...defaultFeeForm } });
   }
 
   function selectInstrument(item: InstrumentSearchResult): void {
     setSelectedInstrument(item);
     setPurchaseDecision(null);
     setWatchlistNote("");
-    setFirstBuyForm(defaultFirstBuyForm);
+    setFirstBuyForm({ ...defaultFirstBuyForm, fees: { ...defaultFeeForm } });
     setSearchOpen(false);
     setActiveSearchIndex(-1);
     setFormError(null);
@@ -327,7 +466,6 @@ export function HoldingsPage(): JSX.Element {
 
     const quantity = Number(firstBuyForm.quantity);
     const price = Number(firstBuyForm.price);
-    const fee = Number(firstBuyForm.fee || "0");
 
     if (!Number.isFinite(quantity) || quantity <= 0) {
       setFormError(t("holdings.error.quantityPositive"));
@@ -337,10 +475,14 @@ export function HoldingsPage(): JSX.Element {
       setFormError(t("holdings.error.buyPriceInvalid"));
       return;
     }
-    if (firstBuyForm.feeMode === "manual" && (!Number.isFinite(fee) || fee < 0)) {
+
+    if (firstBuyForm.feeMode === "manual" && !feePartsAreValid(manualFirstBuyFeePreview)) {
       setFormError(t("holdings.error.feeInvalid"));
       return;
     }
+
+    const feePayload =
+      firstBuyForm.feeMode === "manual" ? manualFirstBuyFeePreview : firstBuyAutoFeePreview;
 
     try {
       await api.createTransaction({
@@ -349,7 +491,12 @@ export function HoldingsPage(): JSX.Element {
         quantity,
         price,
         feeMode: firstBuyForm.feeMode,
-        fee: firstBuyForm.feeMode === "manual" ? fee : 0,
+        fee: feePayload.total,
+        brokerageFee: feePayload.brokerageFee,
+        stampDuty: feePayload.stampDuty,
+        transactionLevy: feePayload.transactionLevy,
+        tradingFee: feePayload.tradingFee,
+        otherFee: feePayload.otherFee,
         tradeDate: firstBuyForm.tradeDate || null,
         notes: firstBuyForm.notes.trim()
       });
@@ -378,7 +525,7 @@ export function HoldingsPage(): JSX.Element {
       feeMode: "manual",
       quantity: "",
       price: input.priceHint != null ? String(input.priceHint) : "",
-      fee: "0",
+      fees: { ...defaultFeeForm },
       tradeDate: "",
       notes: ""
     });
@@ -394,7 +541,13 @@ export function HoldingsPage(): JSX.Element {
       feeMode: record.feeMode,
       quantity: String(record.quantity),
       price: String(record.price),
-      fee: String(record.fee),
+      fees: {
+        brokerageFee: String(record.brokerageFee),
+        stampDuty: String(record.stampDuty),
+        transactionLevy: String(record.transactionLevy),
+        tradingFee: String(record.tradingFee),
+        otherFee: String(record.otherFee)
+      },
       tradeDate: record.tradeDate,
       notes: record.notes
     });
@@ -426,7 +579,6 @@ export function HoldingsPage(): JSX.Element {
 
     const quantity = Number(transactionForm.quantity);
     const price = Number(transactionForm.price);
-    const fee = Number(transactionForm.fee || "0");
 
     if (!transactionForm.symbol) {
       setFormError(t("holdings.error.chooseSymbol"));
@@ -440,10 +592,14 @@ export function HoldingsPage(): JSX.Element {
       setFormError(t("holdings.error.priceInvalid"));
       return;
     }
-    if (transactionForm.feeMode === "manual" && (!Number.isFinite(fee) || fee < 0)) {
+
+    if (transactionForm.feeMode === "manual" && !feePartsAreValid(manualTransactionFeePreview)) {
       setFormError(t("holdings.error.feeInvalid"));
       return;
     }
+
+    const feePayload =
+      transactionForm.feeMode === "manual" ? manualTransactionFeePreview : autoFeePreview;
 
     try {
       const payload = {
@@ -452,7 +608,12 @@ export function HoldingsPage(): JSX.Element {
         quantity,
         price,
         feeMode: transactionForm.feeMode,
-        fee: transactionForm.feeMode === "manual" ? fee : 0,
+        fee: feePayload.total,
+        brokerageFee: feePayload.brokerageFee,
+        stampDuty: feePayload.stampDuty,
+        transactionLevy: feePayload.transactionLevy,
+        tradingFee: feePayload.tradingFee,
+        otherFee: feePayload.otherFee,
         tradeDate: transactionForm.tradeDate || null,
         notes: transactionForm.notes.trim()
       };
@@ -853,15 +1014,102 @@ export function HoldingsPage(): JSX.Element {
                 </select>
               </label>
               <label>
-                {t("holdings.fee")}
+                {t("holdings.table.brokerageFee")}
                 <input
                   type="number"
                   min="0"
                   step="any"
-                  value={firstBuyForm.feeMode === "manual" ? firstBuyForm.fee : String(firstBuyAutoFeePreview)}
+                  value={
+                    firstBuyForm.feeMode === "manual"
+                      ? firstBuyForm.fees.brokerageFee
+                      : String(firstBuyAutoFeePreview.brokerageFee)
+                  }
                   disabled={firstBuyForm.feeMode !== "manual"}
                   onChange={(event) =>
-                    setFirstBuyForm((prev) => ({ ...prev, fee: event.target.value }))
+                    setFirstBuyForm((prev) => ({
+                      ...prev,
+                      fees: { ...prev.fees, brokerageFee: event.target.value }
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                {t("holdings.table.stampDuty")}
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={
+                    firstBuyForm.feeMode === "manual"
+                      ? firstBuyForm.fees.stampDuty
+                      : String(firstBuyAutoFeePreview.stampDuty)
+                  }
+                  disabled={firstBuyForm.feeMode !== "manual"}
+                  onChange={(event) =>
+                    setFirstBuyForm((prev) => ({
+                      ...prev,
+                      fees: { ...prev.fees, stampDuty: event.target.value }
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                {t("holdings.table.transactionLevy")}
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={
+                    firstBuyForm.feeMode === "manual"
+                      ? firstBuyForm.fees.transactionLevy
+                      : String(firstBuyAutoFeePreview.transactionLevy)
+                  }
+                  disabled={firstBuyForm.feeMode !== "manual"}
+                  onChange={(event) =>
+                    setFirstBuyForm((prev) => ({
+                      ...prev,
+                      fees: { ...prev.fees, transactionLevy: event.target.value }
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                {t("holdings.table.tradingFee")}
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={
+                    firstBuyForm.feeMode === "manual"
+                      ? firstBuyForm.fees.tradingFee
+                      : String(firstBuyAutoFeePreview.tradingFee)
+                  }
+                  disabled={firstBuyForm.feeMode !== "manual"}
+                  onChange={(event) =>
+                    setFirstBuyForm((prev) => ({
+                      ...prev,
+                      fees: { ...prev.fees, tradingFee: event.target.value }
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                {t("holdings.table.otherFee")}
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={
+                    firstBuyForm.feeMode === "manual"
+                      ? firstBuyForm.fees.otherFee
+                      : String(firstBuyAutoFeePreview.otherFee)
+                  }
+                  disabled={firstBuyForm.feeMode !== "manual"}
+                  onChange={(event) =>
+                    setFirstBuyForm((prev) => ({
+                      ...prev,
+                      fees: { ...prev.fees, otherFee: event.target.value }
+                    }))
                   }
                 />
               </label>
@@ -886,11 +1134,15 @@ export function HoldingsPage(): JSX.Element {
                 />
               </label>
             </div>
-            {firstBuyForm.feeMode === "auto_hsbc_trade25" ? (
-              <p className="muted">
-                {t("holdings.feeMode.autoPreview", { value: formatCurrency(firstBuyAutoFeePreview) })}
-              </p>
-            ) : null}
+            <p className="muted">
+              {t("holdings.feeMode.totalFee", {
+                value: formatCurrency(
+                  firstBuyForm.feeMode === "manual"
+                    ? manualFirstBuyFeePreview.total
+                    : firstBuyAutoFeePreview.total
+                )
+              })}
+            </p>
             <div className="row-actions">
               <button type="submit" className="btn btn--primary">
                 {t("holdings.savePurchased")}
@@ -1240,15 +1492,102 @@ export function HoldingsPage(): JSX.Element {
                 />
               </label>
               <label>
-                {t("holdings.fee")}
+                {t("holdings.table.brokerageFee")}
                 <input
                   type="number"
                   min="0"
                   step="any"
-                  value={transactionForm.feeMode === "manual" ? transactionForm.fee : String(autoFeePreview)}
+                  value={
+                    transactionForm.feeMode === "manual"
+                      ? transactionForm.fees.brokerageFee
+                      : String(autoFeePreview.brokerageFee)
+                  }
                   disabled={transactionForm.feeMode !== "manual"}
                   onChange={(event) =>
-                    setTransactionForm((prev) => ({ ...prev, fee: event.target.value }))
+                    setTransactionForm((prev) => ({
+                      ...prev,
+                      fees: { ...prev.fees, brokerageFee: event.target.value }
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                {t("holdings.table.stampDuty")}
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={
+                    transactionForm.feeMode === "manual"
+                      ? transactionForm.fees.stampDuty
+                      : String(autoFeePreview.stampDuty)
+                  }
+                  disabled={transactionForm.feeMode !== "manual"}
+                  onChange={(event) =>
+                    setTransactionForm((prev) => ({
+                      ...prev,
+                      fees: { ...prev.fees, stampDuty: event.target.value }
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                {t("holdings.table.transactionLevy")}
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={
+                    transactionForm.feeMode === "manual"
+                      ? transactionForm.fees.transactionLevy
+                      : String(autoFeePreview.transactionLevy)
+                  }
+                  disabled={transactionForm.feeMode !== "manual"}
+                  onChange={(event) =>
+                    setTransactionForm((prev) => ({
+                      ...prev,
+                      fees: { ...prev.fees, transactionLevy: event.target.value }
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                {t("holdings.table.tradingFee")}
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={
+                    transactionForm.feeMode === "manual"
+                      ? transactionForm.fees.tradingFee
+                      : String(autoFeePreview.tradingFee)
+                  }
+                  disabled={transactionForm.feeMode !== "manual"}
+                  onChange={(event) =>
+                    setTransactionForm((prev) => ({
+                      ...prev,
+                      fees: { ...prev.fees, tradingFee: event.target.value }
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                {t("holdings.table.otherFee")}
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={
+                    transactionForm.feeMode === "manual"
+                      ? transactionForm.fees.otherFee
+                      : String(autoFeePreview.otherFee)
+                  }
+                  disabled={transactionForm.feeMode !== "manual"}
+                  onChange={(event) =>
+                    setTransactionForm((prev) => ({
+                      ...prev,
+                      fees: { ...prev.fees, otherFee: event.target.value }
+                    }))
                   }
                 />
               </label>
@@ -1273,11 +1612,15 @@ export function HoldingsPage(): JSX.Element {
                 />
               </label>
             </div>
-            {transactionForm.feeMode === "auto_hsbc_trade25" ? (
-              <p className="muted">
-                {t("holdings.feeMode.autoPreview", { value: formatCurrency(autoFeePreview) })}
-              </p>
-            ) : null}
+            <p className="muted">
+              {t("holdings.feeMode.totalFee", {
+                value: formatCurrency(
+                  transactionForm.feeMode === "manual"
+                    ? manualTransactionFeePreview.total
+                    : autoFeePreview.total
+                )
+              })}
+            </p>
             <div className="fee-explain muted">
               <p>{t("holdings.feeMode.explain.tradeAmount")}</p>
               <p>{t("holdings.feeMode.explain.brokerage")}</p>
@@ -1315,6 +1658,7 @@ export function HoldingsPage(): JSX.Element {
                 <th>{t("holdings.table.stampDuty")}</th>
                 <th>{t("holdings.table.transactionLevy")}</th>
                 <th>{t("holdings.table.tradingFee")}</th>
+                <th>{t("holdings.table.otherFee")}</th>
                 <th>{t("holdings.table.fee")}</th>
                 <th>{t("holdings.table.notes")}</th>
                 <th>{t("holdings.table.actions")}</th>
@@ -1333,6 +1677,7 @@ export function HoldingsPage(): JSX.Element {
                   <td>{formatCurrency(transaction.stampDuty)}</td>
                   <td>{formatCurrency(transaction.transactionLevy)}</td>
                   <td>{formatCurrency(transaction.tradingFee)}</td>
+                  <td>{formatCurrency(transaction.otherFee)}</td>
                   <td>{formatCurrency(transaction.fee)}</td>
                   <td>{transaction.notes || "-"}</td>
                   <td>

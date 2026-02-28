@@ -115,6 +115,7 @@ export interface TransactionRecord {
   stampDuty: number;
   transactionLevy: number;
   tradingFee: number;
+  otherFee: number;
   tradeDate: string;
   notes: string;
   createdAt: string;

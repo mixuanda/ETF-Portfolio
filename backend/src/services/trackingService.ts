@@ -74,6 +74,10 @@ function todayDateString(): string {
 }
 
 function mapTransaction(row: TransactionRow): TransactionRecord {
+  const otherFee = roundMoney(
+    Math.max(0, row.fee - (row.brokerage_fee + row.stamp_duty + row.transaction_levy + row.trading_fee))
+  );
+
   return {
     id: row.id,
     symbol: row.symbol,
@@ -86,6 +90,7 @@ function mapTransaction(row: TransactionRow): TransactionRecord {
     stampDuty: row.stamp_duty,
     transactionLevy: row.transaction_levy,
     tradingFee: row.trading_fee,
+    otherFee,
     tradeDate: row.trade_date,
     notes: row.notes,
     createdAt: row.created_at,
@@ -98,12 +103,24 @@ function resolveTransactionFees(input: {
   quantity: number;
   price: number;
   fee: number;
+  brokerageFee?: number;
+  stampDuty?: number;
+  transactionLevy?: number;
+  tradingFee?: number;
+  otherFee?: number;
 }): TransactionFeeBreakdown {
   if (input.feeMode === "auto_hsbc_trade25") {
     return calculateHkTrade25Fees(roundMoney(input.quantity * input.price));
   }
 
-  return normalizeManualFee(input.fee);
+  return normalizeManualFee({
+    fee: input.fee,
+    brokerageFee: input.brokerageFee,
+    stampDuty: input.stampDuty,
+    transactionLevy: input.transactionLevy,
+    tradingFee: input.tradingFee,
+    otherFee: input.otherFee
+  });
 }
 
 function getLatestSnapshots(symbols: string[]): Map<string, SnapshotRow> {
@@ -511,6 +528,11 @@ export function createTransaction(input: {
   price: number;
   fee: number;
   feeMode?: TransactionFeeMode;
+  brokerageFee?: number;
+  stampDuty?: number;
+  transactionLevy?: number;
+  tradingFee?: number;
+  otherFee?: number;
   tradeDate: string | null;
   notes: string;
 }): TransactionRecord {
@@ -543,7 +565,12 @@ export function createTransaction(input: {
     feeMode,
     quantity,
     price,
-    fee
+    fee,
+    brokerageFee: input.brokerageFee,
+    stampDuty: input.stampDuty,
+    transactionLevy: input.transactionLevy,
+    tradingFee: input.tradingFee,
+    otherFee: input.otherFee
   });
 
   const tradeDate = (input.tradeDate ?? "").trim() || todayDateString();
@@ -720,6 +747,11 @@ export function updateTransaction(
     price: number;
     fee: number;
     feeMode: TransactionFeeMode;
+    brokerageFee: number;
+    stampDuty: number;
+    transactionLevy: number;
+    tradingFee: number;
+    otherFee: number;
     tradeDate: string | null;
     notes: string;
   }>
@@ -735,6 +767,18 @@ export function updateTransaction(
   const price = input.price ?? existing.price;
   const feeMode = input.feeMode ?? existing.fee_mode;
   const fee = input.fee ?? existing.fee;
+  const existingOtherFee = roundMoney(
+    Math.max(
+      0,
+      existing.fee -
+        (existing.brokerage_fee + existing.stamp_duty + existing.transaction_levy + existing.trading_fee)
+    )
+  );
+  const brokerageFee = input.brokerageFee ?? existing.brokerage_fee;
+  const stampDuty = input.stampDuty ?? existing.stamp_duty;
+  const transactionLevy = input.transactionLevy ?? existing.transaction_levy;
+  const tradingFee = input.tradingFee ?? existing.trading_fee;
+  const otherFee = input.otherFee ?? existingOtherFee;
   const tradeDate =
     input.tradeDate === undefined
       ? existing.trade_date
@@ -754,7 +798,12 @@ export function updateTransaction(
     feeMode,
     quantity,
     price,
-    fee
+    fee,
+    brokerageFee,
+    stampDuty,
+    transactionLevy,
+    tradingFee,
+    otherFee
   });
 
   const tx = db.transaction(() => {
