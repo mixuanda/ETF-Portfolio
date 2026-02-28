@@ -96,6 +96,7 @@ export interface TransactionInput {
   quantity: number;
   price: number;
   feeMode?: TransactionFeeMode;
+  stampDutyExempt?: boolean;
   fee?: number;
   brokerageFee?: number;
   stampDuty?: number;

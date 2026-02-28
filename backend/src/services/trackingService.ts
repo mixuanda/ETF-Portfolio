@@ -55,6 +55,7 @@ type TransactionRow = {
   price: number;
   fee: number;
   fee_mode: TransactionFeeMode;
+  stamp_duty_exempt: number;
   brokerage_fee: number;
   stamp_duty: number;
   transaction_levy: number;
@@ -86,6 +87,7 @@ function mapTransaction(row: TransactionRow): TransactionRecord {
     price: row.price,
     fee: row.fee,
     feeMode: row.fee_mode,
+    stampDutyExempt: Boolean(row.stamp_duty_exempt),
     brokerageFee: row.brokerage_fee,
     stampDuty: row.stamp_duty,
     transactionLevy: row.transaction_levy,
@@ -103,6 +105,7 @@ function resolveTransactionFees(input: {
   quantity: number;
   price: number;
   fee: number;
+  stampDutyExempt?: boolean;
   brokerageFee?: number;
   stampDuty?: number;
   transactionLevy?: number;
@@ -110,11 +113,14 @@ function resolveTransactionFees(input: {
   otherFee?: number;
 }): TransactionFeeBreakdown {
   if (input.feeMode === "auto_hsbc_trade25") {
-    return calculateHkTrade25Fees(roundMoney(input.quantity * input.price));
+    return calculateHkTrade25Fees(roundMoney(input.quantity * input.price), {
+      stampDutyExempt: input.stampDutyExempt
+    });
   }
 
   return normalizeManualFee({
     fee: input.fee,
+    stampDutyExempt: input.stampDutyExempt,
     brokerageFee: input.brokerageFee,
     stampDuty: input.stampDuty,
     transactionLevy: input.transactionLevy,
@@ -528,6 +534,7 @@ export function createTransaction(input: {
   price: number;
   fee: number;
   feeMode?: TransactionFeeMode;
+  stampDutyExempt?: boolean;
   brokerageFee?: number;
   stampDuty?: number;
   transactionLevy?: number;
@@ -566,6 +573,7 @@ export function createTransaction(input: {
     quantity,
     price,
     fee,
+    stampDutyExempt: input.stampDutyExempt,
     brokerageFee: input.brokerageFee,
     stampDuty: input.stampDuty,
     transactionLevy: input.transactionLevy,
@@ -585,6 +593,7 @@ export function createTransaction(input: {
         price,
         fee,
         fee_mode,
+        stamp_duty_exempt,
         brokerage_fee,
         stamp_duty,
         transaction_levy,
@@ -599,6 +608,7 @@ export function createTransaction(input: {
         @price,
         @fee,
         @feeMode,
+        @stampDutyExempt,
         @brokerageFee,
         @stampDuty,
         @transactionLevy,
@@ -716,6 +726,7 @@ export function createTransaction(input: {
       price,
       fee: feeBreakdown.fee,
       feeMode: feeBreakdown.feeMode,
+      stampDutyExempt: feeBreakdown.stampDutyExempt ? 1 : 0,
       brokerageFee: feeBreakdown.brokerageFee,
       stampDuty: feeBreakdown.stampDuty,
       transactionLevy: feeBreakdown.transactionLevy,
@@ -747,6 +758,7 @@ export function updateTransaction(
     price: number;
     fee: number;
     feeMode: TransactionFeeMode;
+    stampDutyExempt: boolean;
     brokerageFee: number;
     stampDuty: number;
     transactionLevy: number;
@@ -767,6 +779,7 @@ export function updateTransaction(
   const price = input.price ?? existing.price;
   const feeMode = input.feeMode ?? existing.fee_mode;
   const fee = input.fee ?? existing.fee;
+  const stampDutyExempt = input.stampDutyExempt ?? Boolean(existing.stamp_duty_exempt);
   const existingOtherFee = roundMoney(
     Math.max(
       0,
@@ -799,6 +812,7 @@ export function updateTransaction(
     quantity,
     price,
     fee,
+    stampDutyExempt,
     brokerageFee,
     stampDuty,
     transactionLevy,
@@ -816,6 +830,7 @@ export function updateTransaction(
             price = @price,
             fee = @fee,
             fee_mode = @feeMode,
+            stamp_duty_exempt = @stampDutyExempt,
             brokerage_fee = @brokerageFee,
             stamp_duty = @stampDuty,
             transaction_levy = @transactionLevy,
@@ -833,6 +848,7 @@ export function updateTransaction(
       price,
       fee: feeBreakdown.fee,
       feeMode: feeBreakdown.feeMode,
+      stampDutyExempt: feeBreakdown.stampDutyExempt ? 1 : 0,
       brokerageFee: feeBreakdown.brokerageFee,
       stampDuty: feeBreakdown.stampDuty,
       transactionLevy: feeBreakdown.transactionLevy,

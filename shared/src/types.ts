@@ -111,6 +111,7 @@ export interface TransactionRecord {
   price: number;
   fee: number;
   feeMode: TransactionFeeMode;
+  stampDutyExempt: boolean;
   brokerageFee: number;
   stampDuty: number;
   transactionLevy: number;

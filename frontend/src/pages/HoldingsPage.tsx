@@ -45,6 +45,7 @@ interface FirstBuyFormState {
   quantity: string;
   price: string;
   feeMode: TransactionFeeMode;
+  stampDutyExempt: boolean;
   fees: FeeFormState;
   tradeDate: string;
   notes: string;
@@ -54,6 +55,7 @@ interface TransactionFormState {
   symbol: string;
   transactionType: TransactionType;
   feeMode: TransactionFeeMode;
+  stampDutyExempt: boolean;
   quantity: string;
   price: string;
   fees: FeeFormState;
@@ -93,6 +95,7 @@ const defaultFirstBuyForm: FirstBuyFormState = {
   quantity: "",
   price: "",
   feeMode: "manual",
+  stampDutyExempt: false,
   fees: defaultFeeForm,
   tradeDate: "",
   notes: ""
@@ -102,6 +105,7 @@ const defaultTransactionForm: TransactionFormState = {
   symbol: "",
   transactionType: "BUY",
   feeMode: "manual",
+  stampDutyExempt: false,
   quantity: "",
   price: "",
   fees: defaultFeeForm,
@@ -201,7 +205,11 @@ function feePartsAreValid(input: {
   return Object.values(input).every((value) => Number.isFinite(value) && value >= 0);
 }
 
-function calculateAutoTrade25FeePreview(quantity: number, price: number): {
+function calculateAutoTrade25FeePreview(
+  quantity: number,
+  price: number,
+  stampDutyExempt: boolean
+): {
   brokerageFee: number;
   stampDuty: number;
   transactionLevy: number;
@@ -233,7 +241,7 @@ function calculateAutoTrade25FeePreview(quantity: number, price: number): {
   }
 
   const brokerageFee = 0;
-  const stampDuty = Math.ceil(amount * 0.001);
+  const stampDuty = stampDutyExempt ? 0 : Math.ceil(amount * 0.001);
   const transactionLevy = roundMoney(amount * 0.0000285);
   const tradingFee = roundMoney(amount * 0.0000565);
   const otherFee = 0;
@@ -365,8 +373,8 @@ export function HoldingsPage(): JSX.Element {
   const autoFeePreview = useMemo(() => {
     const quantity = Number(transactionForm.quantity);
     const price = Number(transactionForm.price);
-    return calculateAutoTrade25FeePreview(quantity, price);
-  }, [transactionForm.price, transactionForm.quantity]);
+    return calculateAutoTrade25FeePreview(quantity, price, transactionForm.stampDutyExempt);
+  }, [transactionForm.price, transactionForm.quantity, transactionForm.stampDutyExempt]);
 
   const manualTransactionFeePreview = useMemo(
     () => manualFeeFromState(transactionForm.fees),
@@ -382,8 +390,8 @@ export function HoldingsPage(): JSX.Element {
   const firstBuyAutoFeePreview = useMemo(() => {
     const quantity = Number(firstBuyForm.quantity);
     const price = Number(firstBuyForm.price);
-    return calculateAutoTrade25FeePreview(quantity, price);
-  }, [firstBuyForm.price, firstBuyForm.quantity]);
+    return calculateAutoTrade25FeePreview(quantity, price, firstBuyForm.stampDutyExempt);
+  }, [firstBuyForm.price, firstBuyForm.quantity, firstBuyForm.stampDutyExempt]);
 
   const manualFirstBuyFeePreview = useMemo(
     () => manualFeeFromState(firstBuyForm.fees),
@@ -491,6 +499,7 @@ export function HoldingsPage(): JSX.Element {
         quantity,
         price,
         feeMode: firstBuyForm.feeMode,
+        stampDutyExempt: firstBuyForm.stampDutyExempt,
         fee: feePayload.total,
         brokerageFee: feePayload.brokerageFee,
         stampDuty: feePayload.stampDuty,
@@ -523,6 +532,7 @@ export function HoldingsPage(): JSX.Element {
       symbol: input.symbol,
       transactionType: input.type ?? "BUY",
       feeMode: "manual",
+      stampDutyExempt: false,
       quantity: "",
       price: input.priceHint != null ? String(input.priceHint) : "",
       fees: { ...defaultFeeForm },
@@ -539,6 +549,7 @@ export function HoldingsPage(): JSX.Element {
       symbol: record.symbol,
       transactionType: record.transactionType,
       feeMode: record.feeMode,
+      stampDutyExempt: record.stampDutyExempt,
       quantity: String(record.quantity),
       price: String(record.price),
       fees: {
@@ -608,6 +619,7 @@ export function HoldingsPage(): JSX.Element {
         quantity,
         price,
         feeMode: transactionForm.feeMode,
+        stampDutyExempt: transactionForm.stampDutyExempt,
         fee: feePayload.total,
         brokerageFee: feePayload.brokerageFee,
         stampDuty: feePayload.stampDuty,
@@ -1002,16 +1014,29 @@ export function HoldingsPage(): JSX.Element {
                 {t("holdings.feeMode")}
                 <select
                   value={firstBuyForm.feeMode}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const nextMode = event.target.value as TransactionFeeMode;
                     setFirstBuyForm((prev) => ({
                       ...prev,
-                      feeMode: event.target.value as TransactionFeeMode
-                    }))
-                  }
+                      feeMode: nextMode,
+                      stampDutyExempt: nextMode === "auto_hsbc_trade25" ? prev.stampDutyExempt : false
+                    }));
+                  }}
                 >
                   <option value="manual">{t("holdings.feeMode.manual")}</option>
                   <option value="auto_hsbc_trade25">{t("holdings.feeMode.autoTrade25")}</option>
                 </select>
+              </label>
+              <label className="checkbox-field">
+                <input
+                  type="checkbox"
+                  checked={firstBuyForm.stampDutyExempt}
+                  disabled={firstBuyForm.feeMode !== "auto_hsbc_trade25"}
+                  onChange={(event) =>
+                    setFirstBuyForm((prev) => ({ ...prev, stampDutyExempt: event.target.checked }))
+                  }
+                />
+                <span>{t("holdings.feeMode.stampDutyExempt")}</span>
               </label>
               <label>
                 {t("holdings.table.brokerageFee")}
@@ -1454,16 +1479,32 @@ export function HoldingsPage(): JSX.Element {
                 {t("holdings.feeMode")}
                 <select
                   value={transactionForm.feeMode}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const nextMode = event.target.value as TransactionFeeMode;
                     setTransactionForm((prev) => ({
                       ...prev,
-                      feeMode: event.target.value as TransactionFeeMode
-                    }))
-                  }
+                      feeMode: nextMode,
+                      stampDutyExempt: nextMode === "auto_hsbc_trade25" ? prev.stampDutyExempt : false
+                    }));
+                  }}
                 >
                   <option value="manual">{t("holdings.feeMode.manual")}</option>
                   <option value="auto_hsbc_trade25">{t("holdings.feeMode.autoTrade25")}</option>
                 </select>
+              </label>
+              <label className="checkbox-field">
+                <input
+                  type="checkbox"
+                  checked={transactionForm.stampDutyExempt}
+                  disabled={transactionForm.feeMode !== "auto_hsbc_trade25"}
+                  onChange={(event) =>
+                    setTransactionForm((prev) => ({
+                      ...prev,
+                      stampDutyExempt: event.target.checked
+                    }))
+                  }
+                />
+                <span>{t("holdings.feeMode.stampDutyExempt")}</span>
               </label>
               <label>
                 {t("holdings.quantity")}
@@ -1674,7 +1715,10 @@ export function HoldingsPage(): JSX.Element {
                   <td>{formatCurrency(transaction.price)}</td>
                   <td>{transactionFeeModeLabel(transaction.feeMode)}</td>
                   <td>{formatCurrency(transaction.brokerageFee)}</td>
-                  <td>{formatCurrency(transaction.stampDuty)}</td>
+                  <td>
+                    {formatCurrency(transaction.stampDuty)}
+                    {transaction.stampDutyExempt ? ` (${t("holdings.feeMode.exemptTag")})` : ""}
+                  </td>
                   <td>{formatCurrency(transaction.transactionLevy)}</td>
                   <td>{formatCurrency(transaction.tradingFee)}</td>
                   <td>{formatCurrency(transaction.otherFee)}</td>

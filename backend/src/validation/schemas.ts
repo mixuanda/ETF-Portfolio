@@ -94,6 +94,7 @@ export const createTransactionSchema = z.object({
   quantity: z.number().finite().positive(),
   price: z.number().finite().nonnegative(),
   feeMode: z.enum(["manual", "auto_hsbc_trade25"]).optional().default("manual"),
+  stampDutyExempt: z.boolean().optional().default(false),
   fee: z.number().finite().nonnegative().optional().default(0),
   brokerageFee: z.number().finite().nonnegative().optional(),
   stampDuty: z.number().finite().nonnegative().optional(),

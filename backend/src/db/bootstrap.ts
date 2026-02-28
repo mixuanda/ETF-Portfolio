@@ -35,6 +35,11 @@ function ensureSchemaCompatibility(): void {
       "ALTER TABLE transactions ADD COLUMN fee_mode TEXT NOT NULL DEFAULT 'manual' CHECK (fee_mode IN ('manual', 'auto_hsbc_trade25'))"
     );
   }
+  if (!transactionColumns.some((column) => column.name === "stamp_duty_exempt")) {
+    db.exec(
+      "ALTER TABLE transactions ADD COLUMN stamp_duty_exempt INTEGER NOT NULL DEFAULT 0 CHECK (stamp_duty_exempt IN (0, 1))"
+    );
+  }
   if (!transactionColumns.some((column) => column.name === "brokerage_fee")) {
     db.exec("ALTER TABLE transactions ADD COLUMN brokerage_fee REAL NOT NULL DEFAULT 0");
   }

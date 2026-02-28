@@ -3,6 +3,7 @@ import { roundMoney } from "@portfolio/shared";
 export interface TransactionFeeBreakdown {
   feeMode: "manual" | "auto_hsbc_trade25";
   fee: number;
+  stampDutyExempt: boolean;
   brokerageFee: number;
   stampDuty: number;
   transactionLevy: number;
@@ -24,7 +25,10 @@ function roundUpDollar(value: number): number {
   return Math.ceil(value);
 }
 
-export function calculateHkTrade25Fees(tradeAmount: number): TransactionFeeBreakdown {
+export function calculateHkTrade25Fees(
+  tradeAmount: number,
+  options?: { stampDutyExempt?: boolean }
+): TransactionFeeBreakdown {
   if (!Number.isFinite(tradeAmount) || tradeAmount < 0) {
     throw new Error("Trade amount must be a valid non-negative number.");
   }
@@ -33,6 +37,7 @@ export function calculateHkTrade25Fees(tradeAmount: number): TransactionFeeBreak
     return {
       feeMode: "auto_hsbc_trade25",
       fee: 0,
+      stampDutyExempt: Boolean(options?.stampDutyExempt),
       brokerageFee: 0,
       stampDuty: 0,
       transactionLevy: 0,
@@ -42,7 +47,8 @@ export function calculateHkTrade25Fees(tradeAmount: number): TransactionFeeBreak
   }
 
   const brokerageFee = roundMoney(TRADE25_PROFILE.brokerageFlatFee);
-  const stampDuty = roundUpDollar(tradeAmount * TRADE25_PROFILE.stampDutyRate);
+  const stampDutyExempt = Boolean(options?.stampDutyExempt);
+  const stampDuty = stampDutyExempt ? 0 : roundUpDollar(tradeAmount * TRADE25_PROFILE.stampDutyRate);
   const transactionLevy = roundMoney(tradeAmount * TRADE25_PROFILE.transactionLevyRate);
   const tradingFee = roundMoney(tradeAmount * TRADE25_PROFILE.tradingFeeRate);
   const fee = roundMoney(brokerageFee + stampDuty + transactionLevy + tradingFee);
@@ -50,6 +56,7 @@ export function calculateHkTrade25Fees(tradeAmount: number): TransactionFeeBreak
   return {
     feeMode: "auto_hsbc_trade25",
     fee,
+    stampDutyExempt,
     brokerageFee,
     stampDuty,
     transactionLevy,
@@ -72,6 +79,7 @@ function normalizeComponent(value: number | undefined, label: string): number {
 
 export function normalizeManualFee(input: {
   fee: number;
+  stampDutyExempt?: boolean;
   brokerageFee?: number;
   stampDuty?: number;
   transactionLevy?: number;
@@ -101,6 +109,7 @@ export function normalizeManualFee(input: {
   return {
     feeMode: "manual",
     fee,
+    stampDutyExempt: Boolean(input.stampDutyExempt),
     brokerageFee: hasDetailedParts ? brokerageFee : 0,
     stampDuty: hasDetailedParts ? stampDuty : 0,
     transactionLevy: hasDetailedParts ? transactionLevy : 0,

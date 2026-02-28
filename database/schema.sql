@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   price REAL NOT NULL CHECK (price >= 0),
   fee REAL NOT NULL DEFAULT 0 CHECK (fee >= 0),
   fee_mode TEXT NOT NULL DEFAULT 'manual' CHECK (fee_mode IN ('manual', 'auto_hsbc_trade25')),
+  stamp_duty_exempt INTEGER NOT NULL DEFAULT 0 CHECK (stamp_duty_exempt IN (0, 1)),
   brokerage_fee REAL NOT NULL DEFAULT 0 CHECK (brokerage_fee >= 0),
   stamp_duty REAL NOT NULL DEFAULT 0 CHECK (stamp_duty >= 0),
   transaction_levy REAL NOT NULL DEFAULT 0 CHECK (transaction_levy >= 0),
