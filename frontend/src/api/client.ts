@@ -207,6 +207,17 @@ export const api = {
       body: JSON.stringify(body)
     }),
 
+  updateTransaction: (id: number, body: Partial<TransactionInput>) =>
+    request<TransactionRecord>(`/api/transactions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body)
+    }),
+
+  deleteTransaction: (id: number) =>
+    request<void>(`/api/transactions/${id}`, {
+      method: "DELETE"
+    }),
+
   createManualAsset: (body: ManualAssetInput) =>
     request<ManualAssetWithMetrics>("/api/manual-assets", {
       method: "POST",

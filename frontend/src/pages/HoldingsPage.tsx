@@ -155,6 +155,7 @@ export function HoldingsPage(): JSX.Element {
   const [watchlistNote, setWatchlistNote] = useState("");
   const [firstBuyForm, setFirstBuyForm] = useState<FirstBuyFormState>(defaultFirstBuyForm);
   const [transactionForm, setTransactionForm] = useState<TransactionFormState>(defaultTransactionForm);
+  const [editingTransactionId, setEditingTransactionId] = useState<number | null>(null);
   const [holdingEditForm, setHoldingEditForm] = useState<HoldingEditFormState>(defaultHoldingEditForm);
   const [editingHoldingId, setEditingHoldingId] = useState<number | null>(null);
   const [editingHoldingSymbol, setEditingHoldingSymbol] = useState("");
@@ -266,6 +267,11 @@ export function HoldingsPage(): JSX.Element {
       : t("holdings.feeMode.manual");
   }
 
+  function resetTransactionForm(): void {
+    setEditingTransactionId(null);
+    setTransactionForm(defaultTransactionForm);
+  }
+
   function clearSelection(): void {
     setSelectedInstrument(null);
     setPurchaseDecision(null);
@@ -365,6 +371,7 @@ export function HoldingsPage(): JSX.Element {
     type?: TransactionType;
     priceHint?: number | null;
   }): void {
+    setEditingTransactionId(null);
     setTransactionForm({
       symbol: input.symbol,
       transactionType: input.type ?? "BUY",
@@ -374,6 +381,22 @@ export function HoldingsPage(): JSX.Element {
       fee: "0",
       tradeDate: "",
       notes: ""
+    });
+    setFormError(null);
+    setSuccessMessage(null);
+  }
+
+  function openTransactionEditForm(record: HoldingsResponse["transactions"][number]): void {
+    setEditingTransactionId(record.id);
+    setTransactionForm({
+      symbol: record.symbol,
+      transactionType: record.transactionType,
+      feeMode: record.feeMode,
+      quantity: String(record.quantity),
+      price: String(record.price),
+      fee: String(record.fee),
+      tradeDate: record.tradeDate,
+      notes: record.notes
     });
     setFormError(null);
     setSuccessMessage(null);
@@ -423,7 +446,7 @@ export function HoldingsPage(): JSX.Element {
     }
 
     try {
-      await api.createTransaction({
+      const payload = {
         symbol: transactionForm.symbol,
         transactionType: transactionForm.transactionType,
         quantity,
@@ -432,19 +455,47 @@ export function HoldingsPage(): JSX.Element {
         fee: transactionForm.feeMode === "manual" ? fee : 0,
         tradeDate: transactionForm.tradeDate || null,
         notes: transactionForm.notes.trim()
-      });
+      };
 
-      setSuccessMessage(
-        t("holdings.success.transactionAdded", {
-          type: transactionTypeLabel(transactionForm.transactionType),
-          symbol: transactionForm.symbol
-        })
-      );
-      setTransactionForm(defaultTransactionForm);
+      if (editingTransactionId) {
+        await api.updateTransaction(editingTransactionId, payload);
+        setSuccessMessage(t("holdings.success.transactionUpdated", { symbol: transactionForm.symbol }));
+      } else {
+        await api.createTransaction(payload);
+        setSuccessMessage(
+          t("holdings.success.transactionAdded", {
+            type: transactionTypeLabel(transactionForm.transactionType),
+            symbol: transactionForm.symbol
+          })
+        );
+      }
+
+      resetTransactionForm();
       await loadData();
     } catch (submitError) {
       setFormError(
         submitError instanceof Error ? submitError.message : t("holdings.error.createTransaction")
+      );
+    }
+  }
+
+  async function handleDeleteTransaction(id: number): Promise<void> {
+    if (!window.confirm(t("holdings.confirm.deleteTransaction"))) {
+      return;
+    }
+
+    try {
+      setFormError(null);
+      setSuccessMessage(null);
+      await api.deleteTransaction(id);
+      if (editingTransactionId === id) {
+        resetTransactionForm();
+      }
+      setSuccessMessage(t("holdings.success.transactionDeleted"));
+      await loadData();
+    } catch (deleteError) {
+      setFormError(
+        deleteError instanceof Error ? deleteError.message : t("holdings.error.deleteTransaction")
       );
     }
   }
@@ -1126,7 +1177,11 @@ export function HoldingsPage(): JSX.Element {
 
         {transactionForm.symbol ? (
           <form className="data-form" onSubmit={(event) => void handleTransactionSubmit(event)}>
-            <h4>{t("holdings.addTransactionFor", { symbol: transactionForm.symbol })}</h4>
+            <h4>
+              {editingTransactionId
+                ? t("holdings.editTransactionFor", { symbol: transactionForm.symbol })
+                : t("holdings.addTransactionFor", { symbol: transactionForm.symbol })}
+            </h4>
             <div className="form-grid">
               <label>
                 {t("holdings.transactionType")}
@@ -1223,14 +1278,22 @@ export function HoldingsPage(): JSX.Element {
                 {t("holdings.feeMode.autoPreview", { value: formatCurrency(autoFeePreview) })}
               </p>
             ) : null}
+            <div className="fee-explain muted">
+              <p>{t("holdings.feeMode.explain.tradeAmount")}</p>
+              <p>{t("holdings.feeMode.explain.brokerage")}</p>
+              <p>{t("holdings.feeMode.explain.stampDuty")}</p>
+              <p>{t("holdings.feeMode.explain.transactionLevy")}</p>
+              <p>{t("holdings.feeMode.explain.tradingFee")}</p>
+              <p>{t("holdings.feeMode.explain.fallback")}</p>
+            </div>
             <div className="row-actions">
               <button type="submit" className="btn btn--primary">
-                {t("holdings.saveTransaction")}
+                {editingTransactionId ? t("holdings.updateTransaction") : t("holdings.saveTransaction")}
               </button>
               <button
                 type="button"
                 className="btn btn--ghost"
-                onClick={() => setTransactionForm(defaultTransactionForm)}
+                onClick={resetTransactionForm}
               >
                 {t("holdings.cancel")}
               </button>
@@ -1254,10 +1317,11 @@ export function HoldingsPage(): JSX.Element {
                 <th>{t("holdings.table.tradingFee")}</th>
                 <th>{t("holdings.table.fee")}</th>
                 <th>{t("holdings.table.notes")}</th>
+                <th>{t("holdings.table.actions")}</th>
               </tr>
             </thead>
             <tbody>
-              {data.transactions.slice(0, 12).map((transaction) => (
+              {data.transactions.map((transaction) => (
                 <tr key={transaction.id}>
                   <td>{transaction.tradeDate}</td>
                   <td>{transaction.symbol}</td>
@@ -1271,6 +1335,24 @@ export function HoldingsPage(): JSX.Element {
                   <td>{formatCurrency(transaction.tradingFee)}</td>
                   <td>{formatCurrency(transaction.fee)}</td>
                   <td>{transaction.notes || "-"}</td>
+                  <td>
+                    <div className="row-actions">
+                      <button
+                        type="button"
+                        className="btn btn--ghost"
+                        onClick={() => openTransactionEditForm(transaction)}
+                      >
+                        {t("dividends.action.edit")}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--danger"
+                        onClick={() => void handleDeleteTransaction(transaction.id)}
+                      >
+                        {t("dividends.action.delete")}
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>

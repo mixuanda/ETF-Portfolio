@@ -35,6 +35,18 @@ type HoldingSummaryRow = {
   average_cost: number;
 };
 
+type HoldingMetadataRow = {
+  symbol: string;
+  name: string;
+  asset_type: string;
+  currency: string;
+  region: string;
+  strategy_label: string;
+  risk_group: string;
+  tags: string;
+  notes: string;
+};
+
 type TransactionRow = {
   id: number;
   symbol: string;
@@ -322,6 +334,176 @@ export function listTransactions(options?: { symbol?: string; limit?: number }):
   return rows.map(mapTransaction);
 }
 
+function getTransactionRowById(id: number): TransactionRow | null {
+  const row = db.prepare("SELECT * FROM transactions WHERE id = ?").get(id) as
+    | TransactionRow
+    | undefined;
+  return row ?? null;
+}
+
+function getHoldingMetadataBySymbols(symbols: string[]): Map<string, HoldingMetadataRow> {
+  if (symbols.length === 0) {
+    return new Map();
+  }
+
+  const placeholders = symbols.map(() => "?").join(",");
+  const rows = db
+    .prepare(
+      `
+        SELECT
+          symbol,
+          name,
+          asset_type,
+          currency,
+          region,
+          strategy_label,
+          risk_group,
+          tags,
+          notes
+        FROM holdings
+        WHERE symbol IN (${placeholders})
+      `
+    )
+    .all(...symbols) as HoldingMetadataRow[];
+
+  return new Map(rows.map((row) => [row.symbol, row]));
+}
+
+function rebuildHoldingsForSymbols(symbols: string[]): void {
+  const normalizedSymbols = [...new Set(symbols.map(normalizeSymbol).filter((item) => item.length > 0))];
+  if (normalizedSymbols.length === 0) {
+    return;
+  }
+
+  const placeholders = normalizedSymbols.map(() => "?").join(",");
+  const rows = db
+    .prepare(
+      `
+        SELECT *
+        FROM transactions
+        WHERE symbol IN (${placeholders})
+        ORDER BY symbol ASC, trade_date ASC, id ASC
+      `
+    )
+    .all(...normalizedSymbols) as TransactionRow[];
+
+  const metadataBySymbol = getHoldingMetadataBySymbols(normalizedSymbols);
+  const grouped = new Map<string, TransactionRow[]>();
+  for (const row of rows) {
+    const group = grouped.get(row.symbol) ?? [];
+    group.push(row);
+    grouped.set(row.symbol, group);
+  }
+
+  db.prepare(`DELETE FROM holdings WHERE symbol IN (${placeholders})`).run(...normalizedSymbols);
+
+  const insertHoldingStmt = db.prepare(
+    `
+      INSERT INTO holdings (
+        symbol,
+        name,
+        asset_type,
+        quantity,
+        average_cost,
+        currency,
+        region,
+        strategy_label,
+        risk_group,
+        tags,
+        notes,
+        updated_at
+      ) VALUES (
+        @symbol,
+        @name,
+        @assetType,
+        @quantity,
+        @averageCost,
+        @currency,
+        @region,
+        @strategyLabel,
+        @riskGroup,
+        @tags,
+        @notes,
+        CURRENT_TIMESTAMP
+      )
+    `
+  );
+
+  for (const symbol of normalizedSymbols) {
+    const symbolRows = grouped.get(symbol) ?? [];
+    if (symbolRows.length === 0) {
+      continue;
+    }
+
+    let quantity = 0;
+    let averageCost = 0;
+
+    for (const row of symbolRows) {
+      if (row.transaction_type === "BUY") {
+        const nextQuantity = quantity + row.quantity;
+        averageCost =
+          nextQuantity === 0
+            ? 0
+            : (averageCost * quantity + row.price * row.quantity + row.fee) / nextQuantity;
+        quantity = nextQuantity;
+      } else {
+        if (row.quantity > quantity) {
+          throw new Error(
+            `Invalid transaction history for ${symbol}: SELL quantity exceeds available position.`
+          );
+        }
+
+        quantity -= row.quantity;
+        if (quantity <= 0) {
+          quantity = 0;
+          averageCost = 0;
+        }
+      }
+    }
+
+    if (quantity <= 0) {
+      upsertWatchlistSymbol(symbol, "Auto-tracked after full SELL");
+      continue;
+    }
+
+    const instrument = getInstrumentBySymbol(symbol);
+    const existing = metadataBySymbol.get(symbol);
+    const assetType = existing?.asset_type ?? instrument?.assetType ?? "equity etf";
+
+    insertHoldingStmt.run({
+      symbol,
+      name: existing?.name ?? instrument?.nameEn ?? symbol,
+      assetType,
+      quantity,
+      averageCost,
+      currency: existing?.currency ?? instrument?.currency ?? "HKD",
+      region: existing?.region ?? instrument?.region ?? "Hong Kong",
+      strategyLabel: existing?.strategy_label ?? inferStrategyLabel(assetType),
+      riskGroup: existing?.risk_group ?? inferRiskGroup(assetType),
+      tags: existing?.tags ?? stringifyTags(inferTags(assetType)),
+      notes: existing?.notes ?? ""
+    });
+
+    removeFromWatchlistBySymbol(symbol);
+  }
+}
+
+function validateTransactionFields(input: {
+  quantity: number;
+  price: number;
+  fee: number;
+}): void {
+  if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
+    throw new Error("Quantity must be a valid number greater than zero.");
+  }
+  if (!Number.isFinite(input.price) || input.price < 0) {
+    throw new Error("Price must be a valid non-negative number.");
+  }
+  if (!Number.isFinite(input.fee) || input.fee < 0) {
+    throw new Error("Fee must be a valid non-negative number.");
+  }
+}
+
 export function createTransaction(input: {
   symbol: string;
   transactionType: TransactionType;
@@ -527,4 +709,117 @@ export function createTransaction(input: {
   });
 
   return transaction();
+}
+
+export function updateTransaction(
+  id: number,
+  input: Partial<{
+    symbol: string;
+    transactionType: TransactionType;
+    quantity: number;
+    price: number;
+    fee: number;
+    feeMode: TransactionFeeMode;
+    tradeDate: string | null;
+    notes: string;
+  }>
+): TransactionRecord | null {
+  const existing = getTransactionRowById(id);
+  if (!existing) {
+    return null;
+  }
+
+  const symbol = normalizeSymbol(input.symbol ?? existing.symbol);
+  const transactionType = input.transactionType ?? existing.transaction_type;
+  const quantity = input.quantity ?? existing.quantity;
+  const price = input.price ?? existing.price;
+  const feeMode = input.feeMode ?? existing.fee_mode;
+  const fee = input.fee ?? existing.fee;
+  const tradeDate =
+    input.tradeDate === undefined
+      ? existing.trade_date
+      : (input.tradeDate ?? "").trim() || todayDateString();
+  const notes = input.notes === undefined ? existing.notes : input.notes.trim();
+
+  validateTransactionFields({ quantity, price, fee });
+
+  if (symbol !== existing.symbol) {
+    const instrument = getInstrumentBySymbol(symbol);
+    if (!instrument || !instrument.isActive) {
+      throw new Error(`Instrument ${symbol} is not available in the local catalog.`);
+    }
+  }
+
+  const feeBreakdown = resolveTransactionFees({
+    feeMode,
+    quantity,
+    price,
+    fee
+  });
+
+  const tx = db.transaction(() => {
+    db.prepare(
+      `
+        UPDATE transactions
+        SET symbol = @symbol,
+            transaction_type = @transactionType,
+            quantity = @quantity,
+            price = @price,
+            fee = @fee,
+            fee_mode = @feeMode,
+            brokerage_fee = @brokerageFee,
+            stamp_duty = @stampDuty,
+            transaction_levy = @transactionLevy,
+            trading_fee = @tradingFee,
+            trade_date = @tradeDate,
+            notes = @notes,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = @id
+      `
+    ).run({
+      id,
+      symbol,
+      transactionType,
+      quantity,
+      price,
+      fee: feeBreakdown.fee,
+      feeMode: feeBreakdown.feeMode,
+      brokerageFee: feeBreakdown.brokerageFee,
+      stampDuty: feeBreakdown.stampDuty,
+      transactionLevy: feeBreakdown.transactionLevy,
+      tradingFee: feeBreakdown.tradingFee,
+      tradeDate,
+      notes
+    });
+
+    rebuildHoldingsForSymbols([existing.symbol, symbol]);
+
+    const updated = getTransactionRowById(id);
+    if (!updated) {
+      throw new Error("Unable to load updated transaction.");
+    }
+
+    return mapTransaction(updated);
+  });
+
+  return tx();
+}
+
+export function deleteTransaction(id: number): boolean {
+  const existing = getTransactionRowById(id);
+  if (!existing) {
+    return false;
+  }
+
+  const tx = db.transaction(() => {
+    const result = db.prepare("DELETE FROM transactions WHERE id = ?").run(id);
+    if (result.changes <= 0) {
+      return false;
+    }
+
+    rebuildHoldingsForSymbols([existing.symbol]);
+    return true;
+  });
+
+  return tx();
 }

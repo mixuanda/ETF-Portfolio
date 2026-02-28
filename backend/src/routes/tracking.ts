@@ -3,13 +3,19 @@ import { ZodError } from "zod";
 import {
   addToWatchlist,
   createTransaction,
+  deleteTransaction,
   listTransactions,
   listWatchlistWithQuotes,
-  removeWatchlistItem
+  removeWatchlistItem,
+  updateTransaction
 } from "../services/trackingService.js";
 import { syncFirebaseProgramSafely } from "../services/firebaseSyncHook.js";
 import { parseId, toValidationMessage } from "../utils/api.js";
-import { createTransactionSchema, createWatchlistSchema } from "../validation/schemas.js";
+import {
+  createTransactionSchema,
+  createWatchlistSchema,
+  updateTransactionSchema
+} from "../validation/schemas.js";
 
 const router = Router();
 
@@ -74,6 +80,66 @@ router.post("/transactions", async (req, res) => {
   } catch (error) {
     if (error instanceof ZodError) {
       res.status(400).json({ message: toValidationMessage(error) });
+      return;
+    }
+
+    if (error instanceof Error) {
+      res.status(400).json({ message: error.message });
+      return;
+    }
+
+    throw error;
+  }
+});
+
+router.patch("/transactions/:id", async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    const payload = updateTransactionSchema.parse(req.body);
+    const updated = updateTransaction(id, payload);
+
+    if (!updated) {
+      res.status(404).json({ message: "Transaction not found." });
+      return;
+    }
+
+    await syncFirebaseProgramSafely("update transaction");
+    res.json(updated);
+  } catch (error) {
+    if (error instanceof ZodError) {
+      res.status(400).json({ message: toValidationMessage(error) });
+      return;
+    }
+
+    if (error instanceof Error && error.message === "Invalid id parameter") {
+      res.status(400).json({ message: error.message });
+      return;
+    }
+
+    if (error instanceof Error) {
+      res.status(400).json({ message: error.message });
+      return;
+    }
+
+    throw error;
+  }
+});
+
+router.delete("/transactions/:id", async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    const removed = deleteTransaction(id);
+
+    if (!removed) {
+      res.status(404).json({ message: "Transaction not found." });
+      return;
+    }
+
+    await syncFirebaseProgramSafely("delete transaction");
+    res.status(204).send();
+  } catch (error) {
+    if (error instanceof Error && error.message === "Invalid id parameter") {
+      res.status(400).json({ message: error.message });
       return;
     }
 

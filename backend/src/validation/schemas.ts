@@ -99,6 +99,8 @@ export const createTransactionSchema = z.object({
   notes: optionalTextSchema
 });
 
+export const updateTransactionSchema = createTransactionSchema.partial();
+
 export const updateSettingsSchema = z.object({
   quoteProvider: z.enum(["yahoo", "demo"]).optional(),
   refreshTimeoutMs: z.number().int().min(1000).max(20000).optional(),

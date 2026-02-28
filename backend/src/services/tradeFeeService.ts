@@ -10,7 +10,7 @@ export interface TransactionFeeBreakdown {
 }
 
 const TRADE25_PROFILE = {
-  brokerageFlatFee: 25,
+  brokerageFlatFee: 0,
   stampDutyRate: 0.001,
   transactionLevyRate: 0.0000285,
   tradingFeeRate: 0.0000565
